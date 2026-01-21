@@ -184,6 +184,34 @@ export const TIER_CONFIG = {
   D: { minScore: 0, maxLtv: 0, label: '受限', color: 'red' },
 } as const;
 
+// ==================== 平台统计类型 ====================
+
+// 平台统计数据
+export interface PlatformStats {
+  totalValueLocked: string;
+  totalDeposits: string;
+  totalBorrows: string;
+  activeUsers: number;
+}
+
+// 市场数据（来自 /stats/markets API）
+export interface MarketStatsItem {
+  symbol: string;
+  name: string;
+  totalSupply: string;
+  totalBorrow: string;
+  supplyAPY: string;
+  borrowAPR: string;
+  ltv: number;
+  liquidationLtv: number;
+  utilizationRate: string;
+}
+
+// 市场数据响应
+export interface MarketStatsResponse {
+  markets: MarketStatsItem[];
+}
+
 // ==================== 支持的资产 ====================
 
 export const SUPPORTED_ASSETS = [

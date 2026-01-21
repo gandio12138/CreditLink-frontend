@@ -10,6 +10,8 @@ import type {
   NonceResponse,
   LoginResponse,
   ApiResponse,
+  PlatformStats,
+  MarketStatsResponse,
 } from '../types';
 
 // API基础URL
@@ -155,6 +157,18 @@ export async function getAssetRiskParams(asset: string): Promise<ApiResponse<Ris
   return request<RiskParams>(`/risk/params/${asset}`);
 }
 
+// ==================== 平台统计API ====================
+
+// 获取平台统计数据
+export async function getPlatformStats(): Promise<ApiResponse<PlatformStats>> {
+  return request<PlatformStats>('/stats/platform');
+}
+
+// 获取市场数据
+export async function getMarketStats(): Promise<ApiResponse<MarketStatsResponse>> {
+  return request<MarketStatsResponse>('/stats/markets');
+}
+
 // ==================== WebSocket连接 ====================
 
 // 健康因子预警WebSocket
@@ -201,6 +215,9 @@ export const api = {
   // 风险
   getRiskParams,
   getAssetRiskParams,
+  // 统计
+  getPlatformStats,
+  getMarketStats,
   // WebSocket
   connectHealthAlert,
 };

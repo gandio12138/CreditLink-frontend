@@ -1,21 +1,17 @@
-import { useEffect, useState } from 'react';
-import { useAccount } from 'wagmi';
+import { useEffect, useState, useCallback } from 'react';
+import { useAccount, useConnect } from 'wagmi';
 import { Link } from 'react-router-dom';
 import CreditScoreCard from '../components/credit/CreditScoreCard';
 import AccountSummary from '../components/dashboard/AccountSummary';
 import { useModalStore } from '../store/useStore';
 import { api } from '../services/api';
-import type { ActivityRecord } from '../types';
+import type { ActivityRecord, PlatformStats as PlatformStatsType, MarketStatsItem, RiskParams } from '../types';
 import { SUPPORTED_ASSETS } from '../types';
 
-// 简化的市场展示数据类型
-interface MarketDisplayData {
-  symbol: string;
-  name: string;
-  totalSupplyUSD: string;
-  supplyAPY: string;
-  borrowAPR: string;
-  icon: string;
+// 获取资产图标
+function getAssetIcon(symbol: string): string {
+  const asset = SUPPORTED_ASSETS.find(a => a.symbol === symbol);
+  return asset?.icon || '💰';
 }
 
 // 格式化日期
@@ -118,18 +114,62 @@ function HeroSection({ isConnected }: { isConnected: boolean }) {
   );
 }
 
+// 格式化美元金额
+function formatUSD(value: string): string {
+  const num = parseFloat(value);
+  if (isNaN(num)) return '$0';
+  if (num >= 1000000) {
+    return `$${(num / 1000000).toFixed(2)}M`;
+  } else if (num >= 1000) {
+    return `$${(num / 1000).toFixed(2)}K`;
+  }
+  return `$${num.toFixed(2)}`;
+}
+
+// 格式化用户数
+function formatUsers(value: number): string {
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1)}K`;
+  }
+  return value.toLocaleString();
+}
+
 // 平台统计组件 - 3D卡片效果
-function PlatformStats() {
-  const stats = [
-    { label: '总锁仓价值', value: '$12.5M', icon: '🔒', gradient: 'from-primary-500 to-primary-700', delay: '0ms' },
-    { label: '总存款', value: '$8.2M', icon: '💰', gradient: 'from-emerald-500 to-emerald-700', delay: '100ms' },
-    { label: '总借款', value: '$4.3M', icon: '📊', gradient: 'from-violet-500 to-violet-700', delay: '200ms' },
-    { label: '活跃用户', value: '1,234', icon: '👥', gradient: 'from-cyan-500 to-cyan-700', delay: '300ms' },
+function PlatformStatsDisplay({ stats, isLoading }: { stats: PlatformStatsType | null; isLoading: boolean }) {
+  const displayStats = [
+    {
+      label: '总锁仓价值',
+      value: stats ? formatUSD(stats.totalValueLocked) : '$0',
+      icon: '🔒',
+      gradient: 'from-primary-500 to-primary-700',
+      delay: '0ms'
+    },
+    {
+      label: '总存款',
+      value: stats ? formatUSD(stats.totalDeposits) : '$0',
+      icon: '💰',
+      gradient: 'from-emerald-500 to-emerald-700',
+      delay: '100ms'
+    },
+    {
+      label: '总借款',
+      value: stats ? formatUSD(stats.totalBorrows) : '$0',
+      icon: '📊',
+      gradient: 'from-violet-500 to-violet-700',
+      delay: '200ms'
+    },
+    {
+      label: '活跃用户',
+      value: stats ? formatUsers(stats.activeUsers) : '0',
+      icon: '👥',
+      gradient: 'from-cyan-500 to-cyan-700',
+      delay: '300ms'
+    },
   ];
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {stats.map((stat, index) => (
+      {displayStats.map((stat, index) => (
         <div
           key={index}
           className="card-3d animate-fade-in-up"
@@ -147,7 +187,13 @@ function PlatformStats() {
                 <span className="text-2xl animate-float" style={{ animationDelay: `${index * 200}ms` }}>{stat.icon}</span>
                 <span className="text-sm text-gray-400">{stat.label}</span>
               </div>
-              <div className="text-2xl md:text-3xl font-bold text-white">{stat.value}</div>
+              <div className="text-2xl md:text-3xl font-bold text-white">
+                {isLoading ? (
+                  <div className="h-8 w-24 bg-gray-700 rounded animate-pulse" />
+                ) : (
+                  stat.value
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -246,7 +292,10 @@ function QuickActions() {
 }
 
 // 借款能力组件 - 霓虹进度条
-function BorrowingPower() {
+function BorrowingPower({ riskParams, isLoading }: { riskParams: RiskParams | null; isLoading: boolean }) {
+  const baseLtv = riskParams?.baseLtv || 70;
+  const liquidationThreshold = riskParams?.liquidationThreshold || 85;
+
   return (
     <div className="glass-card-hover p-6 relative overflow-hidden">
       {/* 背景装饰 */}
@@ -260,21 +309,29 @@ function BorrowingPower() {
         <div>
           <div className="flex justify-between text-sm mb-2">
             <span className="text-gray-400">基础 LTV</span>
-            <span className="text-white font-medium">70%</span>
+            {isLoading ? (
+              <div className="h-4 w-10 bg-gray-700 rounded animate-pulse" />
+            ) : (
+              <span className="text-white font-medium">{baseLtv}%</span>
+            )}
           </div>
           <div className="progress-bar-neon">
-            <div className="progress-bar-neon-fill" style={{ width: '70%' }} />
+            <div className="progress-bar-neon-fill" style={{ width: `${baseLtv}%` }} />
           </div>
         </div>
         <div>
           <div className="flex justify-between text-sm mb-2">
             <span className="text-gray-400">清算阈值</span>
-            <span className="text-amber-400 font-medium">85%</span>
+            {isLoading ? (
+              <div className="h-4 w-10 bg-gray-700 rounded animate-pulse" />
+            ) : (
+              <span className="text-amber-400 font-medium">{liquidationThreshold}%</span>
+            )}
           </div>
           <div className="h-2 bg-dark-300/50 rounded-full overflow-hidden border border-amber-500/20">
             <div
               className="h-full rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 relative"
-              style={{ width: '85%' }}
+              style={{ width: `${liquidationThreshold}%` }}
             >
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
             </div>
@@ -298,7 +355,7 @@ function BorrowingPower() {
 }
 
 // 市场概览组件 - 卡片悬浮效果
-function MarketOverview({ markets }: { markets: MarketDisplayData[] }) {
+function MarketOverview({ markets, isLoading }: { markets: MarketStatsItem[]; isLoading: boolean }) {
   const { openDepositModal, openBorrowModal } = useModalStore();
 
   return (
@@ -319,43 +376,76 @@ function MarketOverview({ markets }: { markets: MarketDisplayData[] }) {
         </Link>
       </div>
       <div className="space-y-3 relative z-10">
-        {markets.slice(0, 4).map((market, index) => (
-          <div
-            key={market.symbol}
-            className="flex items-center justify-between p-4 rounded-xl bg-dark-100/50 border border-gray-700/30 hover:border-primary-500/50 transition-all group hover:bg-dark-100/80 animate-fade-in-up"
-            style={{ animationDelay: `${index * 100}ms` }}
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-dark-100 to-dark-300 border border-gray-700/50 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform duration-300">
-                {market.icon}
+        {isLoading ? (
+          // 加载状态骨架屏
+          Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className="flex items-center justify-between p-4 rounded-xl bg-dark-100/50 border border-gray-700/30"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-gray-700 animate-pulse" />
+                <div>
+                  <div className="h-5 w-16 bg-gray-700 rounded animate-pulse mb-2" />
+                  <div className="h-4 w-24 bg-gray-700/50 rounded animate-pulse" />
+                </div>
               </div>
-              <div>
-                <div className="font-semibold text-white group-hover:text-gradient transition-all">{market.symbol}</div>
-                <div className="text-sm text-gray-500">{market.name}</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-6">
-              <div className="text-right hidden sm:block">
-                <div className="text-sm text-gray-400">存款 APY</div>
-                <div className="text-emerald-400 font-medium">{market.supplyAPY}%</div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => openDepositModal(market.symbol)}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 hover:border-emerald-400 transition-all hover:shadow-glow-green"
-                >
-                  存款
-                </button>
-                <button
-                  onClick={() => openBorrowModal(market.symbol)}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 border border-violet-500/30 hover:border-violet-400 transition-all hover:shadow-glow"
-                >
-                  借款
-                </button>
+              <div className="flex items-center gap-6">
+                <div className="text-right hidden sm:block">
+                  <div className="h-4 w-16 bg-gray-700/50 rounded animate-pulse mb-2" />
+                  <div className="h-5 w-12 bg-gray-700 rounded animate-pulse" />
+                </div>
+                <div className="flex gap-2">
+                  <div className="h-8 w-14 bg-gray-700 rounded-lg animate-pulse" />
+                  <div className="h-8 w-14 bg-gray-700 rounded-lg animate-pulse" />
+                </div>
               </div>
             </div>
+          ))
+        ) : markets.length > 0 ? (
+          markets.slice(0, 4).map((market, index) => (
+            <div
+              key={market.symbol}
+              className="flex items-center justify-between p-4 rounded-xl bg-dark-100/50 border border-gray-700/30 hover:border-primary-500/50 transition-all group hover:bg-dark-100/80 animate-fade-in-up"
+              style={{ animationDelay: `${index * 100}ms` }}
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-dark-100 to-dark-300 border border-gray-700/50 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform duration-300">
+                  {getAssetIcon(market.symbol)}
+                </div>
+                <div>
+                  <div className="font-semibold text-white group-hover:text-gradient transition-all">{market.symbol}</div>
+                  <div className="text-sm text-gray-500">{market.name}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-6">
+                <div className="text-right hidden sm:block">
+                  <div className="text-sm text-gray-400">存款 APY</div>
+                  <div className="text-emerald-400 font-medium">{market.supplyAPY}%</div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => openDepositModal(market.symbol)}
+                    className="px-3 py-1.5 text-sm rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 hover:border-emerald-400 transition-all hover:shadow-glow-green"
+                  >
+                    存款
+                  </button>
+                  <button
+                    onClick={() => openBorrowModal(market.symbol)}
+                    className="px-3 py-1.5 text-sm rounded-lg bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 border border-violet-500/30 hover:border-violet-400 transition-all hover:shadow-glow"
+                  >
+                    借款
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
+        ) : (
+          // 空状态
+          <div className="text-center py-8 text-gray-500">
+            暂无市场数据
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
@@ -491,7 +581,7 @@ function FeatureCards() {
 }
 
 // 未连接引导组件 - 超级炫酷版
-function ConnectWalletGuide() {
+function ConnectWalletGuide({ onConnect }: { onConnect: () => void }) {
   return (
     <div className="glow-border-card p-8 md:p-12 text-center relative overflow-hidden">
       {/* 背景光效 */}
@@ -503,17 +593,21 @@ function ConnectWalletGuide() {
       </div>
 
       <div className="relative z-10">
-        {/* 动画图标 */}
-        <div className="w-24 h-24 mx-auto mb-6 relative">
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary-500/30 to-cyan-500/30 border border-primary-500/30 animate-morph" />
+        {/* 动画图标 - 可点击连接钱包 */}
+        <button
+          onClick={onConnect}
+          className="w-24 h-24 mx-auto mb-6 relative cursor-pointer group"
+          title="点击连接钱包"
+        >
+          <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary-500/30 to-cyan-500/30 border border-primary-500/30 animate-morph group-hover:from-primary-500/50 group-hover:to-cyan-500/50 transition-all" />
           <div className="absolute inset-0 flex items-center justify-center">
-            <svg className="w-12 h-12 text-primary-400 animate-float" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-12 h-12 text-primary-400 animate-float group-hover:text-primary-300 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
           {/* 脉冲环 */}
-          <div className="absolute inset-0 rounded-2xl animate-ping-slow opacity-20 bg-primary-500" />
-        </div>
+          <div className="absolute inset-0 rounded-2xl animate-ping-slow opacity-20 bg-primary-500 group-hover:opacity-40" />
+        </button>
 
         <h2 className="text-2xl md:text-3xl font-bold mb-3">
           <span className="text-gradient-animated">连接您的钱包</span>
@@ -521,18 +615,33 @@ function ConnectWalletGuide() {
         <p className="text-gray-400 mb-8 max-w-md mx-auto">
           连接钱包后，您可以存款赚取收益、借款获得资金，并建立您的链上信用评分
         </p>
-        <Link
-          to="/markets"
-          className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-cyan-500 text-white font-semibold hover:from-primary-400 hover:to-cyan-400 transition-all shadow-neon hover:shadow-neon-cyan group"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
-          浏览市场
-          <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-          </svg>
-        </Link>
+
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          {/* 连接钱包按钮 */}
+          <button
+            onClick={onConnect}
+            className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r from-primary-500 to-cyan-500 text-white font-semibold hover:from-primary-400 hover:to-cyan-400 transition-all shadow-neon hover:shadow-neon-cyan group"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            连接钱包
+          </button>
+
+          {/* 浏览市场链接 */}
+          <Link
+            to="/markets"
+            className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl border border-gray-600 text-gray-300 font-semibold hover:border-primary-500/50 hover:text-white transition-all group"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            浏览市场
+            <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+          </Link>
+        </div>
       </div>
     </div>
   );
@@ -540,17 +649,73 @@ function ConnectWalletGuide() {
 
 export default function Dashboard() {
   const { isConnected, address } = useAccount();
+  const { connect, connectors } = useConnect();
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
-  const [markets] = useState<MarketDisplayData[]>(() =>
-    SUPPORTED_ASSETS.map((asset) => ({
-      symbol: asset.symbol,
-      name: asset.name,
-      totalSupplyUSD: '1000000',
-      supplyAPY: '3.2',
-      borrowAPR: '5.1',
-      icon: asset.icon,
-    }))
-  );
+  const [platformStats, setPlatformStats] = useState<PlatformStatsType | null>(null);
+  const [marketStats, setMarketStats] = useState<MarketStatsItem[]>([]);
+  const [riskParams, setRiskParams] = useState<RiskParams | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [isLoadingMarkets, setIsLoadingMarkets] = useState(true);
+  const [isLoadingRiskParams, setIsLoadingRiskParams] = useState(true);
+  const [showWalletModal, setShowWalletModal] = useState(false);
+
+  // 检查是否有浏览器钱包
+  const hasInjectedWallet = typeof window !== 'undefined' && window.ethereum;
+
+  // 处理钱包连接
+  const handleConnect = useCallback(() => {
+    setShowWalletModal(true);
+  }, []);
+
+  // 选择钱包连接
+  const handleSelectWallet = useCallback((connector: typeof connectors[number]) => {
+    // 如果是 injected 类型但没有安装钱包扩展
+    if ((connector.name === 'Injected' || connector.name.toLowerCase().includes('metamask')) && !hasInjectedWallet) {
+      // 打开 MetaMask 下载页面
+      window.open('https://metamask.io/download/', '_blank');
+      setShowWalletModal(false);
+      return;
+    }
+    setShowWalletModal(false);
+    connect({ connector });
+  }, [connect, hasInjectedWallet]);
+
+  // 加载平台统计和市场数据（公开接口，不需要登录）
+  useEffect(() => {
+    const loadPublicData = async () => {
+      try {
+        // 并行加载平台统计和市场数据
+        const [statsResult, marketsResult, riskResult] = await Promise.all([
+          api.getPlatformStats(),
+          api.getMarketStats(),
+          api.getRiskParams(),
+        ]);
+
+        if (statsResult.data) {
+          setPlatformStats(statsResult.data);
+        }
+        setIsLoadingStats(false);
+
+        if (marketsResult.data?.markets) {
+          setMarketStats(marketsResult.data.markets);
+        }
+        setIsLoadingMarkets(false);
+
+        if (riskResult.data?.assets && riskResult.data.assets.length > 0) {
+          // 使用第一个资产的风险参数作为默认展示
+          setRiskParams(riskResult.data.assets[0]);
+        }
+        setIsLoadingRiskParams(false);
+      } catch (error) {
+        console.error('加载公开数据失败:', error);
+        setIsLoadingStats(false);
+        setIsLoadingMarkets(false);
+        setIsLoadingRiskParams(false);
+      }
+    };
+
+    loadPublicData();
+  }, []);
 
   // 加载用户活动数据
   useEffect(() => {
@@ -579,7 +744,7 @@ export default function Dashboard() {
       <HeroSection isConnected={isConnected} />
 
       {/* 平台统计 */}
-      <PlatformStats />
+      <PlatformStatsDisplay stats={platformStats} isLoading={isLoadingStats} />
 
       {isConnected ? (
         <>
@@ -591,7 +756,7 @@ export default function Dashboard() {
             <div className="lg:col-span-2">
               <QuickActions />
             </div>
-            <BorrowingPower />
+            <BorrowingPower riskParams={riskParams} isLoading={isLoadingRiskParams} />
           </div>
 
           {/* 信用评分 */}
@@ -599,20 +764,109 @@ export default function Dashboard() {
 
           {/* 市场和活动 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <MarketOverview markets={markets} />
+            <MarketOverview markets={marketStats} isLoading={isLoadingMarkets} />
             <RecentActivity activities={activities} />
           </div>
         </>
       ) : (
         <>
           {/* 未连接钱包时的引导 */}
-          <ConnectWalletGuide />
+          <ConnectWalletGuide onConnect={handleConnect} />
 
           {/* 功能介绍 */}
           <FeatureCards />
 
           {/* 市场概览 */}
-          <MarketOverview markets={markets} />
+          <MarketOverview markets={marketStats} isLoading={isLoadingMarkets} />
+        </>
+      )}
+
+      {/* 钱包选择模态框 */}
+      {showWalletModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            onClick={() => setShowWalletModal(false)}
+          />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md glass-card p-6 z-50 animate-fade-in">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-white">选择钱包</h3>
+              <button
+                onClick={() => setShowWalletModal(false)}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {connectors.map((connector) => {
+                const isInjected = connector.name === 'Injected' || connector.name.toLowerCase().includes('metamask');
+                const isUnavailable = isInjected && !hasInjectedWallet;
+
+                return (
+                  <button
+                    key={connector.uid}
+                    onClick={() => handleSelectWallet(connector)}
+                    className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all group ${
+                      isUnavailable
+                        ? 'bg-dark-300/30 border-gray-700/30 hover:border-amber-500/50'
+                        : 'bg-dark-300/50 hover:bg-dark-300 border-gray-800/50 hover:border-primary-500/50'
+                    }`}
+                  >
+                    <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center">
+                      {connector.name.toLowerCase().includes('walletconnect') ? (
+                        <svg className="w-8 h-8" viewBox="0 0 40 40" fill="none">
+                          <rect width="40" height="40" rx="8" fill="#3B99FC"/>
+                          <path d="M12.1 15.4c4.4-4.3 11.4-4.3 15.8 0l.5.5a.5.5 0 010 .8l-1.8 1.7a.3.3 0 01-.4 0l-.7-.7a7.8 7.8 0 00-11 0l-.8.8a.3.3 0 01-.4 0l-1.8-1.7a.5.5 0 010-.8l.6-.6zm19.5 3.6l1.6 1.6a.5.5 0 010 .8l-7.3 7.1a.6.6 0 01-.8 0l-5.2-5a.1.1 0 00-.2 0l-5.2 5a.6.6 0 01-.8 0l-7.3-7.1a.5.5 0 010-.8l1.6-1.6a.6.6 0 01.8 0l5.2 5a.1.1 0 00.2 0l5.2-5a.6.6 0 01.8 0l5.2 5a.1.1 0 00.2 0l5.2-5a.6.6 0 01.8 0z" fill="#fff"/>
+                        </svg>
+                      ) : (
+                        <svg className={`w-8 h-8 ${isUnavailable ? 'text-gray-500' : 'text-primary-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <div className={`font-medium transition-colors ${
+                        isUnavailable
+                          ? 'text-gray-400 group-hover:text-amber-400'
+                          : 'text-white group-hover:text-primary-400'
+                      }`}>
+                        {connector.name === 'Injected' ? 'MetaMask' : connector.name}
+                        {isUnavailable && (
+                          <span className="ml-2 text-xs text-amber-500">(未安装)</span>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-400">
+                        {isUnavailable
+                          ? '点击前往安装'
+                          : connector.name.toLowerCase().includes('walletconnect')
+                            ? '扫码连接移动端钱包'
+                            : '使用浏览器扩展连接'}
+                      </div>
+                    </div>
+                    <svg className={`w-5 h-5 transition-colors ${
+                      isUnavailable
+                        ? 'text-gray-600 group-hover:text-amber-400'
+                        : 'text-gray-500 group-hover:text-primary-400'
+                    }`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      {isUnavailable ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      )}
+                    </svg>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="mt-6 text-center text-sm text-gray-500">
+              选择您常用的钱包进行连接
+            </p>
+          </div>
         </>
       )}
     </div>

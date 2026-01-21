@@ -127,17 +127,23 @@ function PositionCard({
   );
 }
 
-// 统计卡片组件
+// 统计卡片组件 - 增强版
 function StatCard({
   label,
   value,
   color = 'white',
   subValue,
+  icon,
+  gradient,
+  index = 0,
 }: {
   label: string;
   value: string;
   color?: string;
   subValue?: React.ReactNode;
+  icon?: string;
+  gradient?: string;
+  index?: number;
 }) {
   const colorClasses: Record<string, string> = {
     white: 'text-white',
@@ -146,13 +152,34 @@ function StatCard({
     rose: 'text-rose-400',
   };
 
+  const gradientClasses: Record<string, string> = {
+    white: 'from-gray-500/10 to-gray-600/5',
+    emerald: 'from-emerald-500/15 to-teal-500/5',
+    amber: 'from-amber-500/15 to-orange-500/5',
+    rose: 'from-rose-500/15 to-red-500/5',
+  };
+
   return (
-    <div className="glass-card-hover p-6">
-      <div className="text-sm text-gray-400 mb-2">{label}</div>
-      <div className={`text-2xl md:text-3xl font-bold ${colorClasses[color] || colorClasses.white}`}>
-        {value}
+    <div
+      className="card-3d animate-fade-in-up"
+      style={{ animationDelay: `${index * 100}ms` }}
+    >
+      <div className="card-3d-inner glass-card-hover p-6 relative overflow-hidden">
+        {/* 背景渐变 */}
+        <div className={`absolute inset-0 bg-gradient-to-br ${gradient || gradientClasses[color] || gradientClasses.white}`} />
+        <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full blur-2xl" />
+
+        <div className="relative z-10">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm text-gray-400 font-medium">{label}</div>
+            {icon && <span className="text-2xl animate-float" style={{ animationDelay: `${index * 150}ms` }}>{icon}</span>}
+          </div>
+          <div className={`text-2xl md:text-3xl font-bold ${colorClasses[color] || colorClasses.white}`}>
+            {value}
+          </div>
+          {subValue}
+        </div>
       </div>
-      {subValue}
     </div>
   );
 }
@@ -194,25 +221,78 @@ export default function Portfolio() {
     loadData();
   }, [isConnected, address, setPositions]);
 
-  // 未连接钱包
+  // 未连接钱包 - 增强版
   if (!isConnected) {
     return (
       <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold text-white">我的持仓</h1>
-          <p className="text-gray-400 mt-1">管理您的存款和借款</p>
+        {/* 页面标题 - 增强版 */}
+        <div className="animate-fade-in-up">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-violet-500/20 rounded-full border border-violet-500/30 mb-3">
+            <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+            <span className="text-xs text-violet-300 font-medium">资产管理</span>
+          </div>
+          <h1 className="text-4xl font-bold">
+            <span className="text-gradient">我的持仓</span>
+          </h1>
+          <p className="text-gray-400 mt-2">管理您的存款和借款，追踪投资组合表现</p>
         </div>
 
-        <div className="glass-card p-12 text-center relative overflow-hidden">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-primary-500/10 rounded-full blur-3xl" />
-          <div className="relative z-10">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-primary-500/20 to-cyan-500/20 border border-primary-500/20 flex items-center justify-center">
-              <svg className="w-10 h-10 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
+        {/* 未连接引导 - 超级增强版 */}
+        <div className="glow-border-card animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+          <div className="glass-card p-12 md:p-16 text-center relative overflow-hidden">
+            {/* 背景装饰 */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 bg-gradient-radial from-primary-500/20 via-primary-500/5 to-transparent blur-3xl" />
+            <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-cyan-500/10 rounded-full blur-3xl" />
+            <div className="absolute -bottom-20 -right-20 w-60 h-60 bg-violet-500/10 rounded-full blur-3xl" />
+
+            {/* 能量波纹 */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-30">
+              <div className="energy-ripple" />
             </div>
-            <h2 className="text-xl font-bold text-white mb-2">连接钱包查看持仓</h2>
-            <p className="text-gray-400">连接您的钱包以查看和管理您的资产</p>
+
+            <div className="relative z-10">
+              {/* 动画图标 */}
+              <div className="w-28 h-28 mx-auto mb-8 relative">
+                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-primary-500/30 to-cyan-500/30 border border-primary-500/30 animate-morph" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <svg className="w-14 h-14 text-primary-400 animate-float" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </div>
+                {/* 脉冲环 */}
+                <div className="absolute inset-0 rounded-3xl animate-ping-slow opacity-20 bg-primary-500" />
+              </div>
+
+              <h2 className="text-3xl font-bold mb-4">
+                <span className="text-gradient-animated">连接钱包查看持仓</span>
+              </h2>
+              <p className="text-gray-400 mb-8 max-w-md mx-auto leading-relaxed">
+                连接您的钱包以查看和管理您的 DeFi 资产，追踪存款收益和借款状况
+              </p>
+
+              {/* 功能预览 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto mb-8">
+                {[
+                  { icon: '💰', title: '存款管理', desc: '查看存款收益' },
+                  { icon: '📊', title: '借款追踪', desc: '监控借款状态' },
+                  { icon: '⭐', title: '信用评分', desc: '提升借款额度' },
+                ].map((item, index) => (
+                  <div
+                    key={index}
+                    className="p-4 rounded-xl bg-dark-100/50 border border-gray-700/50 animate-fade-in-up"
+                    style={{ animationDelay: `${(index + 2) * 100}ms` }}
+                  >
+                    <span className="text-2xl mb-2 block">{item.icon}</span>
+                    <div className="text-sm font-semibold text-white">{item.title}</div>
+                    <div className="text-xs text-gray-500">{item.desc}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="text-sm text-gray-500">
+                支持 MetaMask、WalletConnect 等主流钱包
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -231,37 +311,59 @@ export default function Portfolio() {
 
   return (
     <div className="space-y-8">
-      {/* 页面标题 */}
-      <div>
-        <h1 className="text-3xl font-bold text-white">我的持仓</h1>
-        <p className="text-gray-400 mt-1">管理您的存款和借款</p>
+      {/* 页面标题 - 增强版 */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="animate-fade-in-up">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-violet-500/20 rounded-full border border-violet-500/30 mb-3">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+            <span className="text-xs text-violet-300 font-medium">资产管理</span>
+          </div>
+          <h1 className="text-4xl font-bold">
+            <span className="text-gradient">我的持仓</span>
+          </h1>
+          <p className="text-gray-400 mt-2">管理您的存款和借款，追踪投资组合表现</p>
+        </div>
+        <div className="text-sm text-gray-500 animate-fade-in">
+          钱包: <span className="text-primary-400 font-mono">{address?.slice(0, 6)}...{address?.slice(-4)}</span>
+        </div>
       </div>
 
-      {/* 账户概览 */}
+      {/* 账户概览 - 增强版 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="总资产价值"
           value={accountLoading ? '...' : formatUSD(accountData?.totalCollateralUSD || '0')}
           color="emerald"
+          icon="💎"
+          index={0}
         />
         <StatCard
           label="总借款"
           value={accountLoading ? '...' : formatUSD(accountData?.totalDebtUSD || '0')}
           color="amber"
+          icon="📤"
+          index={1}
         />
         <StatCard
           label="净资产"
           value={accountLoading ? '...' : formatUSD(
             (parseFloat(accountData?.totalCollateralUSD || '0') - parseFloat(accountData?.totalDebtUSD || '0')).toString()
           )}
+          icon="💰"
+          index={2}
         />
         <StatCard
           label="健康因子"
           value={accountLoading ? '...' : healthStatus.value}
           color={healthStatus.color}
+          icon={healthStatus.color === 'emerald' ? '✅' : healthStatus.color === 'amber' ? '⚠️' : '🚨'}
+          index={3}
           subValue={
-            <div className={`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full text-xs font-medium bg-${healthStatus.color}-500/20 text-${healthStatus.color}-400`}>
-              <span className={`w-1.5 h-1.5 rounded-full bg-${healthStatus.color}-400`} />
+            <div className={`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full text-xs font-medium bg-${healthStatus.color}-500/20 text-${healthStatus.color}-400 border border-${healthStatus.color}-500/30`}>
+              <span className={`w-1.5 h-1.5 rounded-full bg-${healthStatus.color}-400 animate-pulse`} />
               {healthStatus.label}
             </div>
           }
