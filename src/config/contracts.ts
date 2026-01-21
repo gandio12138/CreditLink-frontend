@@ -2,15 +2,15 @@
 export const CONTRACT_ADDRESSES = {
   // Sepolia测试网
   11155111: {
-    LendingPool: '0x5f9e27ba0cf5db736a2acb8d45dd5407d925979b' as `0x${string}`,
-    RiskRegistry: '0x10d18b2fbb77d831a7b941ca37c9177229f22ba8' as `0x${string}`,
-    PriceOracle: '0x574feb61f783e974033e5eea7cf036bf984b6977' as `0x${string}`,
-    IncentiveController: '0xfc8d415c2631a8dc610b623a5d5edbfb7305bd3c' as `0x${string}`,
-    Treasury: '0x845498093c8fd401e965098f6eb7a68dbc2a7733' as `0x${string}`,
+    LendingPool: '0x98938e68753db6c4c0c8b6f2c7beac8bf5de41e4' as `0x${string}`,
+    RiskRegistry: '0xe039ea4c86e0523dd09b2dc8d02bc48c052209a7' as `0x${string}`,
+    PriceOracle: '0x21041287e0227bf5089797fba3e2935cfc74a93b' as `0x${string}`,
+    IncentiveController: '0xb69b7579405de8e4a3c57d986177d37863b4e6c2' as `0x${string}`,
+    Treasury: '0x9b23f38db946080493e64cb1686c205a8bf62f06' as `0x${string}`,
     // 测试代币
-    USDT: '0x6e19a8dd6d874180363398715fd4f2682a0ec37e' as `0x${string}`,
-    USDC: '0x6adce9e1bf72c6b9e9f6025c9a9e5391f024c9dc' as `0x${string}`,
-    WETH: '0x216c5954ec9feefcb7f277d16d4a794ab90542f6' as `0x${string}`,
+    USDT: '0x5eb9f33ab23c97a9a4ca513cf0fb940460db6350' as `0x${string}`,
+    USDC: '0xa4ab85165d76e1f630ab366d3b562e86932542b8' as `0x${string}`,
+    WETH: '0x31087dbbbdce3941aa4b3a4d0223ff264bd4f81c' as `0x${string}`,
     WBTC: '0x0000000000000000000000000000000000000000' as `0x${string}`,
   },
   // Base Sepolia测试网

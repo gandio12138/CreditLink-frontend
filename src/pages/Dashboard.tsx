@@ -194,7 +194,7 @@ function QuickActions() {
         <span className="text-gradient">快速操作</span>
       </h2>
       <div className="grid grid-cols-2 gap-4">
-        {actions.map((action, index) => (
+        {actions.map((action) => (
           <button
             key={action.label}
             onClick={action.onClick}

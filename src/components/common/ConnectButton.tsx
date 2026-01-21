@@ -13,7 +13,7 @@ export default function ConnectButton() {
   const [pendingError, setPendingError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const { isAuthenticated, setIsAuthenticated } = useUserStore();
+  const { setIsAuthenticated } = useUserStore();
 
   // 处理连接错误
   useEffect(() => {
