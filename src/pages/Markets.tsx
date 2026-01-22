@@ -6,6 +6,7 @@ import { useReserveData } from '../hooks/useLendingPool';
 import { SUPPORTED_ASSETS } from '../types';
 import type { PlatformStats, MarketStatsItem } from '../types';
 import { api } from '../services/api';
+import InterestRateCurve from '../components/charts/InterestRateCurve';
 
 // 格式化大数字
 function formatLargeNumber(value: string, decimals: number): string {
@@ -321,18 +322,25 @@ export default function Markets() {
             <span className="text-gray-400 font-normal text-lg">(Kink Model)</span>
           </h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 relative z-10">
+            {/* 左侧：交互式利率曲线图 */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                 <svg className="w-5 h-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
                 </svg>
-                工作原理
+                利率曲线 (移动鼠标查看详情)
               </h3>
-              <p className="text-gray-400 leading-relaxed">
-                CreditLink 使用<span className="text-primary-400 font-medium">双斜率利率模型</span>。当资金利用率低于最优值时，利率缓慢上升；
-                当利用率超过最优值时，利率快速上升，以激励还款并保持流动性。
-              </p>
-              <div className="mt-6 p-5 rounded-2xl bg-gradient-to-r from-primary-500/10 to-cyan-500/10 border border-primary-500/30 backdrop-blur-sm">
+              <div className="p-4 rounded-2xl bg-dark-100/50 border border-gray-700/50">
+                <InterestRateCurve
+                  baseRate={2}
+                  optimalUtilization={80}
+                  slope1={4}
+                  slope2={75}
+                  currentUtilization={parseFloat(utilizationRate)}
+                  creditDiscount={0}
+                />
+              </div>
+              <div className="p-4 rounded-xl bg-gradient-to-r from-primary-500/10 to-cyan-500/10 border border-primary-500/30 backdrop-blur-sm">
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
                     <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -345,25 +353,46 @@ export default function Markets() {
                 </div>
               </div>
             </div>
-            <div className="space-y-3">
-              {[
-                { label: '基础利率', value: '2%', color: 'from-gray-400 to-gray-500', icon: '📐' },
-                { label: '最优利用率', value: '80%', color: 'from-cyan-400 to-blue-500', icon: '🎯' },
-                { label: '斜率1 (利用率 < 最优)', value: '4%', color: 'from-emerald-400 to-green-500', icon: '📈' },
-                { label: '斜率2 (利用率 > 最优)', value: '75%', color: 'from-amber-400 to-orange-500', icon: '🚀' },
-              ].map((item, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-4 rounded-xl bg-dark-100/50 border border-gray-700/50 hover:border-primary-500/30 transition-all duration-300 group animate-fade-in-up"
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">{item.icon}</span>
-                    <span className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors">{item.label}</span>
+
+            {/* 右侧：参数说明 */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <svg className="w-5 h-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                模型参数
+              </h3>
+              <div className="space-y-3">
+                {[
+                  { label: '基础利率', value: '2%', color: 'from-gray-400 to-gray-500', icon: '📐', desc: '最低借款利率' },
+                  { label: '最优利用率', value: '80%', color: 'from-cyan-400 to-blue-500', icon: '🎯', desc: '利率转折点' },
+                  { label: '斜率1', value: '4%', color: 'from-emerald-400 to-green-500', icon: '📈', desc: '利用率 < 80% 时' },
+                  { label: '斜率2', value: '75%', color: 'from-amber-400 to-orange-500', icon: '🚀', desc: '利用率 > 80% 时' },
+                ].map((item, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-4 rounded-xl bg-dark-100/50 border border-gray-700/50 hover:border-primary-500/30 transition-all duration-300 group animate-fade-in-up"
+                    style={{ animationDelay: `${index * 100}ms` }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{item.icon}</span>
+                      <div>
+                        <span className="text-sm text-gray-300 group-hover:text-white transition-colors block">{item.label}</span>
+                        <span className="text-xs text-gray-500">{item.desc}</span>
+                      </div>
+                    </div>
+                    <span className={`font-bold text-lg bg-gradient-to-r ${item.color} bg-clip-text text-transparent`}>{item.value}</span>
                   </div>
-                  <span className={`font-bold text-lg bg-gradient-to-r ${item.color} bg-clip-text text-transparent`}>{item.value}</span>
-                </div>
-              ))}
+                ))}
+              </div>
+
+              {/* 工作原理说明 */}
+              <div className="p-4 rounded-xl bg-dark-100/30 border border-gray-800/50 mt-4">
+                <p className="text-sm text-gray-400 leading-relaxed">
+                  CreditLink 使用<span className="text-primary-400 font-medium">双斜率利率模型</span>。当资金利用率低于最优值时，利率缓慢上升；
+                  当利用率超过最优值时，利率快速上升，以激励还款并保持流动性。
+                </p>
+              </div>
             </div>
           </div>
         </div>

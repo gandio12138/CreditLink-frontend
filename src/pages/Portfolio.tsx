@@ -4,6 +4,7 @@ import { api } from '../services/api';
 import { useUserAccountData } from '../hooks/useLendingPool';
 import { useModalStore, useUserStore } from '../store/useStore';
 import CreditScoreCard from '../components/credit/CreditScoreCard';
+import HealthFactorGauge from '../components/charts/HealthFactorGauge';
 import type { ActivityRecord } from '../types';
 
 // 格式化美元金额
@@ -370,8 +371,41 @@ export default function Portfolio() {
         />
       </div>
 
-      {/* 信用评分卡片 */}
-      <CreditScoreCard compact />
+      {/* 健康因子和信用评分 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* 健康因子仪表盘 */}
+        <div className="glass-card-hover p-6 relative overflow-hidden">
+          <div className="absolute -top-10 -right-10 w-32 h-32 bg-primary-500/10 rounded-full blur-3xl" />
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2 relative z-10">
+            <span className="w-1 h-5 bg-gradient-to-b from-primary-500 to-cyan-500 rounded-full" />
+            健康因子
+          </h3>
+          <div className="relative z-10 flex justify-center">
+            <HealthFactorGauge
+              healthFactor={healthFactor || 2.5}
+              size="md"
+              showLabels={true}
+            />
+          </div>
+          {healthFactor > 0 && healthFactor < 1.5 && (
+            <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 relative z-10">
+              <div className="flex items-start gap-2">
+                <svg className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <p className="text-xs text-amber-300">
+                  您的健康因子较低，建议还款或增加抵押品以降低清算风险
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 信用评分卡片 */}
+        <div className="lg:col-span-2">
+          <CreditScoreCard compact />
+        </div>
+      </div>
 
       {/* 持仓列表 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
