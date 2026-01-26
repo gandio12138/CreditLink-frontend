@@ -1,21 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useAccount, useChainId } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { useModalStore } from '../store/useStore';
-import { getContractAddresses } from '../config/contracts';
-import { useReserveData } from '../hooks/useLendingPool';
 import { SUPPORTED_ASSETS } from '../types';
 import type { PlatformStats, MarketStatsItem } from '../types';
 import { api } from '../services/api';
 import InterestRateCurve from '../components/charts/InterestRateCurve';
-
-// 格式化大数字
-function formatLargeNumber(value: string, decimals: number): string {
-  const num = parseFloat(value) / Math.pow(10, decimals);
-  if (num >= 1e9) return `$${(num / 1e9).toFixed(2)}B`;
-  if (num >= 1e6) return `$${(num / 1e6).toFixed(2)}M`;
-  if (num >= 1e3) return `$${(num / 1e3).toFixed(2)}K`;
-  return `$${num.toFixed(2)}`;
-}
 
 // 格式化简单数字
 function formatSimpleNumber(value: string): string {
@@ -25,13 +14,6 @@ function formatSimpleNumber(value: string): string {
   if (num >= 1e6) return `$${(num / 1e6).toFixed(2)}M`;
   if (num >= 1e3) return `$${(num / 1e3).toFixed(2)}K`;
   return `$${num.toFixed(2)}`;
-}
-
-// 格式化APY/APR (假设是27位精度)
-function formatRate(rate: bigint | undefined): string {
-  if (!rate) return '0.00%';
-  const ratePerYear = Number(rate) / 1e27 * 100;
-  return `${ratePerYear.toFixed(2)}%`;
 }
 
 // 增强版市场行组件 - 使用后端API数据

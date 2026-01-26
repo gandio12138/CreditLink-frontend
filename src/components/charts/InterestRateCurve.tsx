@@ -18,7 +18,7 @@ export default function InterestRateCurve({
   creditDiscount = 0,
 }: InterestRateCurveProps) {
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; util: number; rate: number } | null>(null);
-  const [isAnimated, setIsAnimated] = useState(true);
+  const [isAnimated] = useState(true);
 
   // 计算利率
   const calculateRate = (utilization: number): number => {
@@ -33,7 +33,7 @@ export default function InterestRateCurve({
   };
 
   // 生成曲线路径
-  const { pathData, pathDataDiscounted, maxRate, points, discountedPoints } = useMemo(() => {
+  const { pathData, pathDataDiscounted, maxRate } = useMemo(() => {
     const pts: { x: number; y: number; util: number; rate: number }[] = [];
     const discPts: { x: number; y: number; util: number; rate: number }[] = [];
 

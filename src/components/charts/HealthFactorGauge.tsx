@@ -30,8 +30,8 @@ export default function HealthFactorGauge({
 
   // 计算仪表盘角度（半圆，从左到右）
   const startAngle = 180;
-  const endAngle = 0;
   const angleRange = 180;
+  // endAngle = 0 (unused but kept for documentation)
 
   // 计算当前值对应的角度
   const valueAngle = Math.min((displayValue / maxValue) * angleRange, angleRange);
