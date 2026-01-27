@@ -1,17 +1,21 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, memo } from 'react';
 import { useAccount, useConnect } from 'wagmi';
 import { Link } from 'react-router-dom';
 import CreditScoreCard from '../components/credit/CreditScoreCard';
 import AccountSummary from '../components/dashboard/AccountSummary';
-import { useModalStore } from '../store/useStore';
+import { useModalStore, useUserStore } from '../store/useStore';
+import { useUserAccountData } from '../hooks/useLendingPool';
 import { api } from '../services/api';
 import type { ActivityRecord, PlatformStats as PlatformStatsType, MarketStatsItem, RiskParams } from '../types';
 import { SUPPORTED_ASSETS } from '../types';
 
-// 获取资产图标
+// 缓存资产图标映射
+const assetIconMap = new Map<string, string>();
+SUPPORTED_ASSETS.forEach(a => assetIconMap.set(a.symbol, a.icon));
+
+// 获取资产图标（使用缓存）
 function getAssetIcon(symbol: string): string {
-  const asset = SUPPORTED_ASSETS.find(a => a.symbol === symbol);
-  return asset?.icon || '💰';
+  return assetIconMap.get(symbol) || '💰';
 }
 
 // 格式化日期
@@ -33,10 +37,181 @@ const actionTypeMap: Record<string, { label: string; color: string; bgColor: str
   LIQUIDATION: { label: '清算', color: 'text-rose-400', bgColor: 'bg-rose-500/20' },
 };
 
+// 静态样式配置（移到组件外部避免重复创建）
+const TIER_STYLES: Record<string, { color: string; bgColor: string; borderColor: string }> = {
+  S: { color: 'text-purple-400', bgColor: 'bg-purple-500/20', borderColor: 'border-purple-500/40' },
+  A: { color: 'text-emerald-400', bgColor: 'bg-emerald-500/20', borderColor: 'border-emerald-500/40' },
+  B: { color: 'text-blue-400', bgColor: 'bg-blue-500/20', borderColor: 'border-blue-500/40' },
+  C: { color: 'text-amber-400', bgColor: 'bg-amber-500/20', borderColor: 'border-amber-500/40' },
+  D: { color: 'text-rose-400', bgColor: 'bg-rose-500/20', borderColor: 'border-rose-500/40' },
+};
+
+const DEFAULT_TIER_STYLE = { color: 'text-primary-400', bgColor: 'bg-primary-500/20', borderColor: 'border-primary-500/40' };
+
+// 获取信用等级样式
+function getTierStyle(tier: string) {
+  return TIER_STYLES[tier] || DEFAULT_TIER_STYLE;
+}
+
+// 格式化函数（移到组件外部）
+function formatAssets(value: string): string {
+  const num = parseFloat(value);
+  if (isNaN(num) || num === 0) return '$0.00';
+  if (num >= 1000000) return `$${(num / 1000000).toFixed(2)}M`;
+  if (num >= 1000) return `$${(num / 1000).toFixed(2)}K`;
+  return `$${num.toFixed(2)}`;
+}
+
+function formatHealthFactor(hf: number): string {
+  if (hf === 0) return '∞';
+  return hf.toFixed(2);
+}
+
+function getHealthFactorColor(hf: number): string {
+  if (hf === 0) return 'text-emerald-400';
+  if (hf >= 2) return 'text-emerald-400';
+  if (hf >= 1.5) return 'text-cyan-400';
+  if (hf >= 1.15) return 'text-amber-400';
+  return 'text-rose-400';
+}
+
+// Hero 右侧账户概览卡片
+interface HeroAccountCardProps {
+  creditTier: string;
+  creditScore: number;
+  healthFactor: number;
+  totalAssets: string;
+  maxLtv: number;
+  isLoading: boolean;
+}
+
+const HeroAccountCard = memo(function HeroAccountCard({ creditTier, creditScore, healthFactor, totalAssets, maxLtv, isLoading }: HeroAccountCardProps) {
+  // 使用 useMemo 缓存计算结果
+  const { tierStyle, displayTier, displayScore, displayLtv, formattedAssets, formattedHF, hfColor } = useMemo(() => ({
+    tierStyle: getTierStyle(creditTier),
+    displayTier: creditTier || 'C',
+    displayScore: creditScore || 500,
+    displayLtv: maxLtv ? maxLtv / 100 : 70,
+    formattedAssets: formatAssets(totalAssets),
+    formattedHF: formatHealthFactor(healthFactor),
+    hfColor: getHealthFactorColor(healthFactor),
+  }), [creditTier, creditScore, maxLtv, totalAssets, healthFactor]);
+
+  return (
+    <div className="relative animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
+      {/* 主卡片 */}
+      <div className="relative overflow-hidden rounded-2xl bg-dark-200/60 border border-gray-700/50 backdrop-blur-xl p-5">
+        {/* 背景光效 */}
+        <div className={`absolute -top-10 -right-10 w-32 h-32 ${tierStyle.bgColor} rounded-full blur-3xl opacity-60`} />
+
+        {/* 顶部：信用等级 */}
+        <div className="relative flex items-center gap-4 mb-4 pb-4 border-b border-gray-700/50">
+          {/* 等级徽章 */}
+          <div className={`relative w-16 h-16 rounded-xl ${tierStyle.bgColor} ${tierStyle.borderColor} border-2 flex items-center justify-center`}>
+            <span className={`text-3xl font-black ${tierStyle.color}`}>{displayTier}</span>
+            {/* 光环效果 */}
+            <div className={`absolute inset-0 rounded-xl ${tierStyle.bgColor} animate-ping opacity-30`} />
+          </div>
+
+          <div className="flex-1">
+            <div className="text-sm text-gray-400 mb-1">信用评分</div>
+            {isLoading ? (
+              <div className="h-7 w-20 bg-gray-700 rounded animate-pulse" />
+            ) : (
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold text-white">{displayScore}</span>
+                <span className="text-sm text-gray-500">/1000</span>
+              </div>
+            )}
+          </div>
+
+          {/* LTV 标签 */}
+          <div className="text-right">
+            <div className="text-xs text-gray-500 mb-1">您的 LTV</div>
+            <div className={`text-lg font-bold ${tierStyle.color}`}>{displayLtv}%</div>
+          </div>
+        </div>
+
+        {/* 底部：资产和健康因子 */}
+        <div className="relative grid grid-cols-2 gap-4">
+          {/* 总资产 */}
+          <div className="p-3 rounded-xl bg-dark-300/50 border border-gray-700/30">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-6 h-6 rounded-lg bg-primary-500/20 flex items-center justify-center">
+                <svg className="w-3.5 h-3.5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <span className="text-xs text-gray-400">总资产</span>
+            </div>
+            {isLoading ? (
+              <div className="h-6 w-16 bg-gray-700 rounded animate-pulse" />
+            ) : (
+              <div className="text-lg font-bold text-white">{formattedAssets}</div>
+            )}
+          </div>
+
+          {/* 健康因子 */}
+          <div className="p-3 rounded-xl bg-dark-300/50 border border-gray-700/30">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                </svg>
+              </div>
+              <span className="text-xs text-gray-400">健康因子</span>
+            </div>
+            {isLoading ? (
+              <div className="h-6 w-12 bg-gray-700 rounded animate-pulse" />
+            ) : (
+              <div className={`text-lg font-bold ${hfColor}`}>{formattedHF}</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 // Hero区域组件 - 超级炫酷版
 function HeroSection({ isConnected }: { isConnected: boolean }) {
+  // 获取用户数据用于快速统计
+  const { creditInfo, setCreditInfo } = useUserStore();
+  const { data: accountData, isLoading: isLoadingAccount } = useUserAccountData();
+  const { address } = useAccount();
+  const [isLoadingCredit, setIsLoadingCredit] = useState(false);
+
+  // 加载信用数据
+  useEffect(() => {
+    if (!isConnected || !address) return;
+
+    const loadCreditInfo = async () => {
+      setIsLoadingCredit(true);
+      try {
+        const result = await api.getCredit();
+        if (result.data) {
+          setCreditInfo(result.data);
+        }
+      } catch (error) {
+        console.error('加载信用信息失败:', error);
+      } finally {
+        setIsLoadingCredit(false);
+      }
+    };
+
+    loadCreditInfo();
+  }, [isConnected, address, setCreditInfo]);
+
+  // 计算显示数据
+  const creditTier = creditInfo?.tier || '';
+  const creditScore = creditInfo?.score || 0;
+  const maxLtv = creditInfo?.maxLtv || 0;
+  const healthFactor = parseFloat(accountData?.healthFactor || '0');
+  const totalAssets = accountData?.totalCollateralUSD || '0';
+  const isLoading = isLoadingAccount || isLoadingCredit;
+
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-primary-500/20 p-8 md:p-12 group">
+    <div className="relative overflow-hidden rounded-3xl border border-primary-500/20 p-6 md:p-10 group">
       {/* 动态渐变背景 */}
       <div className="absolute inset-0 bg-gradient-to-br from-dark-300 via-dark-400 to-dark-500" />
 
@@ -64,8 +239,8 @@ function HeroSection({ isConnected }: { isConnected: boolean }) {
       <div className="absolute inset-0 grid-bg opacity-30" />
 
       <div className="relative z-10">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-          <div className="space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="space-y-4 flex-1">
             {/* 状态标签 - 脉冲效果 */}
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500/20 rounded-full border border-primary-500/30 backdrop-blur-sm animate-fade-in">
               <span className="relative flex h-2.5 w-2.5">
@@ -76,7 +251,7 @@ function HeroSection({ isConnected }: { isConnected: boolean }) {
             </div>
 
             {/* 标题 - 动态渐变 */}
-            <h1 className="text-4xl md:text-6xl font-bold animate-fade-in-up">
+            <h1 className="text-4xl md:text-5xl font-bold animate-fade-in-up">
               <span className="text-gradient-animated">CreditLink</span>
             </h1>
 
@@ -88,26 +263,38 @@ function HeroSection({ isConnected }: { isConnected: boolean }) {
             </p>
           </div>
 
-          {!isConnected && (
-            <div className="flex flex-col sm:flex-row gap-3 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
-              <Link to="/markets" className="btn-neon text-center group">
-                <span className="relative z-10 flex items-center justify-center gap-2">
-                  开始探索
-                  <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                  </svg>
-                </span>
-              </Link>
-              <a
-                href="https://docs.creditlink.io"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-6 py-3 rounded-xl font-semibold text-gray-300 bg-dark-100/50 border border-gray-700 hover:border-primary-500/50 hover:text-white transition-all text-center backdrop-blur-sm"
-              >
-                了解更多
-              </a>
-            </div>
-          )}
+          {/* 右侧区域 */}
+          <div className="flex-shrink-0 w-full lg:w-auto lg:min-w-[340px]">
+            {isConnected ? (
+              <HeroAccountCard
+                creditTier={creditTier}
+                creditScore={creditScore}
+                healthFactor={healthFactor}
+                totalAssets={totalAssets}
+                maxLtv={maxLtv}
+                isLoading={isLoading}
+              />
+            ) : (
+              <div className="flex flex-col sm:flex-row lg:flex-col gap-3 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
+                <Link to="/markets" className="btn-neon text-center group">
+                  <span className="relative z-10 flex items-center justify-center gap-2">
+                    开始探索
+                    <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                  </span>
+                </Link>
+                <a
+                  href="https://docs.creditlink.io"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-6 py-3 rounded-xl font-semibold text-gray-300 bg-dark-100/50 border border-gray-700 hover:border-primary-500/50 hover:text-white transition-all text-center backdrop-blur-sm"
+                >
+                  了解更多
+                </a>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -135,8 +322,9 @@ function formatUsers(value: number): string {
 }
 
 // 平台统计组件 - 3D卡片效果
-function PlatformStatsDisplay({ stats, isLoading }: { stats: PlatformStatsType | null; isLoading: boolean }) {
-  const displayStats = [
+const PlatformStatsDisplay = memo(function PlatformStatsDisplay({ stats, isLoading }: { stats: PlatformStatsType | null; isLoading: boolean }) {
+  // 使用 useMemo 缓存统计数据
+  const displayStats = useMemo(() => [
     {
       label: '总锁仓价值',
       value: stats ? formatUSD(stats.totalValueLocked) : '$0',
@@ -165,7 +353,7 @@ function PlatformStatsDisplay({ stats, isLoading }: { stats: PlatformStatsType |
       gradient: 'from-cyan-500 to-cyan-700',
       delay: '300ms'
     },
-  ];
+  ], [stats]);
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -200,7 +388,7 @@ function PlatformStatsDisplay({ stats, isLoading }: { stats: PlatformStatsType |
       ))}
     </div>
   );
-}
+});
 
 // 快速操作组件 - 流光效果
 function QuickActions() {
@@ -292,9 +480,11 @@ function QuickActions() {
 }
 
 // 借款能力组件 - 霓虹进度条
-function BorrowingPower({ riskParams, isLoading }: { riskParams: RiskParams | null; isLoading: boolean }) {
-  const baseLtv = riskParams?.baseLtv || 70;
-  const liquidationThreshold = riskParams?.liquidationThreshold || 85;
+const BorrowingPower = memo(function BorrowingPower({ riskParams, isLoading }: { riskParams: RiskParams | null; isLoading: boolean }) {
+  const { baseLtv, liquidationThreshold } = useMemo(() => ({
+    baseLtv: riskParams?.baseLtv || 70,
+    liquidationThreshold: riskParams?.liquidationThreshold || 85,
+  }), [riskParams]);
 
   return (
     <div className="glass-card-hover p-6 relative overflow-hidden">
@@ -352,10 +542,10 @@ function BorrowingPower({ riskParams, isLoading }: { riskParams: RiskParams | nu
       </div>
     </div>
   );
-}
+});
 
 // 市场概览组件 - 卡片悬浮效果
-function MarketOverview({ markets, isLoading }: { markets: MarketStatsItem[]; isLoading: boolean }) {
+const MarketOverview = memo(function MarketOverview({ markets, isLoading }: { markets: MarketStatsItem[]; isLoading: boolean }) {
   const { openDepositModal, openBorrowModal } = useModalStore();
 
   return (
@@ -449,10 +639,10 @@ function MarketOverview({ markets, isLoading }: { markets: MarketStatsItem[]; is
       </div>
     </div>
   );
-}
+});
 
 // 最近活动组件
-function RecentActivity({ activities }: { activities: ActivityRecord[] }) {
+const RecentActivity = memo(function RecentActivity({ activities }: { activities: ActivityRecord[] }) {
   if (activities.length === 0) {
     return (
       <div className="glass-card-hover p-6 relative overflow-hidden">
@@ -520,40 +710,41 @@ function RecentActivity({ activities }: { activities: ActivityRecord[] }) {
       </div>
     </div>
   );
-}
+});
+
+// 静态功能特性数据（移到组件外部避免重复创建）
+const FEATURES = [
+  {
+    icon: '💰',
+    title: '存款赚取收益',
+    description: '存入您的资产，自动赚取利息收益，同时作为抵押品获得借款能力',
+    gradient: 'from-emerald-500/20 via-teal-500/10 to-transparent',
+    iconBg: 'from-emerald-500 to-teal-600',
+    delay: '0ms',
+  },
+  {
+    icon: '🛡️',
+    title: '信用增强借款',
+    description: '建立链上信用评分，获得更高的贷款价值比(LTV)，借出更多资金',
+    gradient: 'from-violet-500/20 via-purple-500/10 to-transparent',
+    iconBg: 'from-violet-500 to-purple-600',
+    delay: '100ms',
+  },
+  {
+    icon: '⚡',
+    title: '安全透明',
+    description: '智能合约保障资金安全，所有操作链上可查，完全去中心化运行',
+    gradient: 'from-cyan-500/20 via-blue-500/10 to-transparent',
+    iconBg: 'from-cyan-500 to-blue-600',
+    delay: '200ms',
+  },
+];
 
 // 功能介绍组件 - 3D卡片
-function FeatureCards() {
-  const features = [
-    {
-      icon: '💰',
-      title: '存款赚取收益',
-      description: '存入您的资产，自动赚取利息收益，同时作为抵押品获得借款能力',
-      gradient: 'from-emerald-500/20 via-teal-500/10 to-transparent',
-      iconBg: 'from-emerald-500 to-teal-600',
-      delay: '0ms',
-    },
-    {
-      icon: '🛡️',
-      title: '信用增强借款',
-      description: '建立链上信用评分，获得更高的贷款价值比(LTV)，借出更多资金',
-      gradient: 'from-violet-500/20 via-purple-500/10 to-transparent',
-      iconBg: 'from-violet-500 to-purple-600',
-      delay: '100ms',
-    },
-    {
-      icon: '⚡',
-      title: '安全透明',
-      description: '智能合约保障资金安全，所有操作链上可查，完全去中心化运行',
-      gradient: 'from-cyan-500/20 via-blue-500/10 to-transparent',
-      iconBg: 'from-cyan-500 to-blue-600',
-      delay: '200ms',
-    },
-  ];
-
+const FeatureCards = memo(function FeatureCards() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {features.map((feature, index) => (
+      {FEATURES.map((feature, index) => (
         <div
           key={index}
           className="card-3d animate-fade-in-up"
@@ -578,7 +769,7 @@ function FeatureCards() {
       ))}
     </div>
   );
-}
+});
 
 // 未连接引导组件 - 超级炫酷版
 function ConnectWalletGuide({ onConnect }: { onConnect: () => void }) {
