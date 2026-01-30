@@ -6,328 +6,161 @@ export default {
   ],
   theme: {
     extend: {
+      // 专业 DeFi 配色方案 (Modern Professional)
       colors: {
-        // 主色调 - 科技蓝紫渐变
+        // 背景色系 - 深蓝灰 (Slate)
+        slate: {
+          850: '#141B2D',
+          900: '#0F172A',
+          925: '#0B0C10',
+          950: '#080B12',
+        },
+        // 表面/卡片色
+        surface: {
+          DEFAULT: '#1E293B',
+          light: '#334155',
+          dark: '#0F172A',
+        },
+        // 主色调 - 靛蓝 (Indigo)
         primary: {
-          50: '#f0f4ff',
-          100: '#e0e8ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          800: '#3730a3',
-          900: '#312e81',
-          950: '#1e1b4b',
+          50: '#EEF2FF',
+          100: '#E0E7FF',
+          200: '#C7D2FE',
+          300: '#A5B4FC',
+          400: '#818CF8',
+          500: '#6366F1',
+          600: '#4F46E5',
+          700: '#4338CA',
+          800: '#3730A3',
+          900: '#312E81',
         },
-        // 强调色 - 青色
+        // 强调色 - 紫罗兰 (Violet)
         accent: {
-          300: '#67e8f9',
-          400: '#22d3ee',
-          500: '#06b6d4',
-          600: '#0891b2',
+          50: '#F5F3FF',
+          100: '#EDE9FE',
+          200: '#DDD6FE',
+          300: '#C4B5FD',
+          400: '#A78BFA',
+          500: '#8B5CF6',
+          600: '#7C3AED',
+          700: '#6D28D9',
+          800: '#5B21B6',
+          900: '#4C1D95',
         },
-        // 霓虹色系
-        neon: {
-          pink: '#ff0080',
-          purple: '#7928ca',
-          blue: '#0070f3',
-          cyan: '#00d4ff',
-          green: '#00ff88',
-          yellow: '#ffdd00',
-          orange: '#ff6600',
-          red: '#ff0044',
+        // 功能色 - 收益/安全 (Emerald)
+        success: {
+          50: '#ECFDF5',
+          100: '#D1FAE5',
+          200: '#A7F3D0',
+          300: '#6EE7B7',
+          400: '#34D399',
+          500: '#10B981',
+          600: '#059669',
+          700: '#047857',
+          800: '#065F46',
+          900: '#064E3B',
         },
-        // 深色背景
-        dark: {
-          50: '#1e293b',
-          100: '#1a2234',
-          200: '#151c2c',
-          300: '#111827',
-          400: '#0d1320',
-          500: '#0a0f1a',
-          600: '#060912',
-          700: '#030508',
-          800: '#010203',
-          900: '#000000',
+        // 功能色 - 风险/债务 (Rose)
+        danger: {
+          50: '#FFF1F2',
+          100: '#FFE4E6',
+          200: '#FECDD3',
+          300: '#FDA4AF',
+          400: '#FB7185',
+          500: '#F43F5E',
+          600: '#E11D48',
+          700: '#BE123C',
+          800: '#9F1239',
+          900: '#881337',
         },
-        // 玻璃效果色
-        glass: {
-          white: 'rgba(255, 255, 255, 0.1)',
-          dark: 'rgba(0, 0, 0, 0.3)',
-          primary: 'rgba(99, 102, 241, 0.15)',
-          accent: 'rgba(6, 182, 212, 0.15)',
+        // 功能色 - 警告/注意 (Amber)
+        warning: {
+          50: '#FFFBEB',
+          100: '#FEF3C7',
+          200: '#FDE68A',
+          300: '#FCD34D',
+          400: '#FBBF24',
+          500: '#F59E0B',
+          600: '#D97706',
+          700: '#B45309',
+          800: '#92400E',
+          900: '#78350F',
+        },
+        // 信息色 (Cyan)
+        info: {
+          50: '#ECFEFF',
+          100: '#CFFAFE',
+          200: '#A5F3FC',
+          300: '#67E8F9',
+          400: '#22D3EE',
+          500: '#06B6D4',
+          600: '#0891B2',
+          700: '#0E7490',
+          800: '#155E75',
+          900: '#164E63',
         },
       },
+      // 字体
+      fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+      },
+      // 背景
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
-        'hero-pattern': 'radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.15) 0%, transparent 50%), radial-gradient(circle at 80% 50%, rgba(6, 182, 212, 0.15) 0%, transparent 50%)',
-        'card-gradient': 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(6, 182, 212, 0.1) 100%)',
-        'glow-gradient': 'linear-gradient(135deg, #6366f1 0%, #06b6d4 100%)',
-        'neon-gradient': 'linear-gradient(90deg, #ff0080, #7928ca, #0070f3, #00d4ff, #00ff88)',
-        'aurora-gradient': 'linear-gradient(45deg, #1a1a2e, #16213e, #0f3460, #1a1a2e)',
-        'cyber-grid': 'linear-gradient(rgba(99, 102, 241, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(99, 102, 241, 0.1) 1px, transparent 1px)',
-        'mesh-gradient': 'radial-gradient(at 40% 20%, hsla(253, 82%, 58%, 0.5) 0px, transparent 50%), radial-gradient(at 80% 0%, hsla(189, 100%, 56%, 0.3) 0px, transparent 50%), radial-gradient(at 0% 50%, hsla(253, 82%, 58%, 0.3) 0px, transparent 50%), radial-gradient(at 80% 50%, hsla(189, 100%, 56%, 0.2) 0px, transparent 50%), radial-gradient(at 0% 100%, hsla(253, 82%, 58%, 0.2) 0px, transparent 50%), radial-gradient(at 80% 100%, hsla(189, 100%, 56%, 0.3) 0px, transparent 50%)',
+        'gradient-mesh': 'radial-gradient(at 40% 20%, rgba(99, 102, 241, 0.08) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(139, 92, 246, 0.06) 0px, transparent 50%)',
+        'card-gradient': 'linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%)',
+        'subtle-gradient': 'linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.03) 100%)',
       },
+      // 精简动画
       animation: {
-        // 基础动画
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'float': 'float 6s ease-in-out infinite',
-        'float-slow': 'float 8s ease-in-out infinite',
-        'float-fast': 'float 4s ease-in-out infinite',
-        'bounce-slow': 'bounce 2s infinite',
-
-        // 发光动画
-        'glow': 'glow 2s ease-in-out infinite alternate',
-        'glow-pulse': 'glowPulse 2s ease-in-out infinite',
-
-        // 渐变动画
-        'shimmer': 'shimmer 2s linear infinite',
-        'gradient': 'gradient 8s linear infinite',
-        'gradient-x': 'gradientX 3s ease infinite',
-        'gradient-xy': 'gradientXY 15s ease infinite',
-
-        // 旋转动画
-        'spin-slow': 'spin 8s linear infinite',
-        'spin-reverse': 'spinReverse 4s linear infinite',
-        'rotate-border': 'rotateBorder 4s linear infinite',
-
-        // 缩放动画
-        'scale-pulse': 'scalePulse 2s ease-in-out infinite',
-        'ping-slow': 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite',
-
-        // 滑动动画
-        'slide-up': 'slideUp 0.5s ease-out',
-        'slide-down': 'slideDown 0.5s ease-out',
-        'slide-left': 'slideLeft 0.5s ease-out',
-        'slide-right': 'slideRight 0.5s ease-out',
-
-        // 淡入动画
-        'fade-in': 'fadeIn 0.5s ease-out',
-        'fade-in-up': 'fadeInUp 0.6s ease-out',
-        'fade-in-down': 'fadeInDown 0.6s ease-out',
-
-        // 特效动画
-        'aurora': 'aurora 20s linear infinite',
-        'wave': 'wave 10s ease-in-out infinite',
-        'ripple': 'ripple 1.5s cubic-bezier(0, 0.2, 0.8, 1) infinite',
-        'morph': 'morph 8s ease-in-out infinite',
-        'text-shimmer': 'textShimmer 2.5s ease infinite',
-        'border-flow': 'borderFlow 3s ease-in-out infinite',
-        'neon-flicker': 'neonFlicker 1.5s infinite alternate',
-
-        // 粒子动画
-        'particle-1': 'particleFloat 12s ease-in-out infinite',
-        'particle-2': 'particleFloat 15s ease-in-out infinite reverse',
-        'particle-3': 'particleFloat 18s ease-in-out infinite',
-
-        // 3D 动画
-        'tilt': 'tilt 10s ease-in-out infinite',
-        'flip': 'flip 6s ease-in-out infinite',
+        'fade-in': 'fadeIn 0.3s ease-out',
+        'fade-in-up': 'fadeInUp 0.4s ease-out',
+        'slide-in': 'slideIn 0.3s ease-out',
+        'pulse-subtle': 'pulseSubtle 2s ease-in-out infinite',
+        'spin-slow': 'spin 3s linear infinite',
       },
       keyframes: {
-        // 漂浮
-        float: {
-          '0%, 100%': { transform: 'translateY(0px)' },
-          '50%': { transform: 'translateY(-10px)' },
-        },
-
-        // 发光
-        glow: {
-          '0%': { boxShadow: '0 0 20px rgba(99, 102, 241, 0.3)' },
-          '100%': { boxShadow: '0 0 40px rgba(99, 102, 241, 0.6)' },
-        },
-        glowPulse: {
-          '0%, 100%': {
-            boxShadow: '0 0 20px rgba(99, 102, 241, 0.4), 0 0 40px rgba(6, 182, 212, 0.2)'
-          },
-          '50%': {
-            boxShadow: '0 0 40px rgba(99, 102, 241, 0.6), 0 0 80px rgba(6, 182, 212, 0.4)'
-          },
-        },
-
-        // 闪烁
-        shimmer: {
-          '0%': { backgroundPosition: '-200% 0' },
-          '100%': { backgroundPosition: '200% 0' },
-        },
-
-        // 渐变移动
-        gradient: {
-          '0%, 100%': { backgroundPosition: '0% 50%' },
-          '50%': { backgroundPosition: '100% 50%' },
-        },
-        gradientX: {
-          '0%, 100%': { backgroundSize: '200% 200%', backgroundPosition: 'left center' },
-          '50%': { backgroundSize: '200% 200%', backgroundPosition: 'right center' },
-        },
-        gradientXY: {
-          '0%, 100%': { backgroundPosition: '0% 0%' },
-          '50%': { backgroundPosition: '100% 100%' },
-        },
-
-        // 反向旋转
-        spinReverse: {
-          '0%': { transform: 'rotate(360deg)' },
-          '100%': { transform: 'rotate(0deg)' },
-        },
-        rotateBorder: {
-          '0%': { transform: 'rotate(0deg)' },
-          '100%': { transform: 'rotate(360deg)' },
-        },
-
-        // 缩放脉冲
-        scalePulse: {
-          '0%, 100%': { transform: 'scale(1)' },
-          '50%': { transform: 'scale(1.05)' },
-        },
-
-        // 滑动
-        slideUp: {
-          '0%': { transform: 'translateY(20px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' },
-        },
-        slideDown: {
-          '0%': { transform: 'translateY(-20px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' },
-        },
-        slideLeft: {
-          '0%': { transform: 'translateX(20px)', opacity: '0' },
-          '100%': { transform: 'translateX(0)', opacity: '1' },
-        },
-        slideRight: {
-          '0%': { transform: 'translateX(-20px)', opacity: '0' },
-          '100%': { transform: 'translateX(0)', opacity: '1' },
-        },
-
-        // 淡入
         fadeIn: {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
         },
         fadeInUp: {
-          '0%': { opacity: '0', transform: 'translateY(30px)' },
+          '0%': { opacity: '0', transform: 'translateY(10px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
-        fadeInDown: {
-          '0%': { opacity: '0', transform: 'translateY(-30px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
+        slideIn: {
+          '0%': { opacity: '0', transform: 'translateX(-10px)' },
+          '100%': { opacity: '1', transform: 'translateX(0)' },
         },
-
-        // 极光
-        aurora: {
-          '0%': { backgroundPosition: '0% 50%' },
-          '50%': { backgroundPosition: '100% 50%' },
-          '100%': { backgroundPosition: '0% 50%' },
-        },
-
-        // 波浪
-        wave: {
-          '0%': { transform: 'translateX(-100%)' },
-          '50%': { transform: 'translateX(0%)' },
-          '100%': { transform: 'translateX(100%)' },
-        },
-
-        // 涟漪
-        ripple: {
-          '0%': { transform: 'scale(0.8)', opacity: '1' },
-          '100%': { transform: 'scale(2.4)', opacity: '0' },
-        },
-
-        // 变形
-        morph: {
-          '0%, 100%': { borderRadius: '60% 40% 30% 70% / 60% 30% 70% 40%' },
-          '50%': { borderRadius: '30% 60% 70% 40% / 50% 60% 30% 60%' },
-        },
-
-        // 文字闪烁
-        textShimmer: {
-          '0%': { backgroundPosition: '-500%' },
-          '100%': { backgroundPosition: '500%' },
-        },
-
-        // 边框流动
-        borderFlow: {
-          '0%, 100%': { backgroundPosition: '0% 50%' },
-          '50%': { backgroundPosition: '100% 50%' },
-        },
-
-        // 霓虹闪烁
-        neonFlicker: {
-          '0%, 19%, 21%, 23%, 25%, 54%, 56%, 100%': {
-            textShadow: '0 0 4px #fff, 0 0 11px #fff, 0 0 19px #fff, 0 0 40px #0fa, 0 0 80px #0fa, 0 0 90px #0fa, 0 0 100px #0fa, 0 0 150px #0fa',
-          },
-          '20%, 24%, 55%': {
-            textShadow: 'none',
-          },
-        },
-
-        // 粒子浮动
-        particleFloat: {
-          '0%': { transform: 'translateY(0) translateX(0) scale(1)', opacity: '0.5' },
-          '25%': { transform: 'translateY(-50px) translateX(25px) scale(1.1)', opacity: '0.8' },
-          '50%': { transform: 'translateY(-100px) translateX(-25px) scale(1)', opacity: '0.5' },
-          '75%': { transform: 'translateY(-50px) translateX(-50px) scale(0.9)', opacity: '0.8' },
-          '100%': { transform: 'translateY(0) translateX(0) scale(1)', opacity: '0.5' },
-        },
-
-        // 3D 倾斜
-        tilt: {
-          '0%, 100%': { transform: 'perspective(1000px) rotateX(0deg) rotateY(0deg)' },
-          '25%': { transform: 'perspective(1000px) rotateX(5deg) rotateY(-5deg)' },
-          '50%': { transform: 'perspective(1000px) rotateX(-5deg) rotateY(5deg)' },
-          '75%': { transform: 'perspective(1000px) rotateX(5deg) rotateY(5deg)' },
-        },
-
-        // 翻转
-        flip: {
-          '0%': { transform: 'perspective(400px) rotateY(0)' },
-          '100%': { transform: 'perspective(400px) rotateY(360deg)' },
+        pulseSubtle: {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.7' },
         },
       },
+      // 阴影
       boxShadow: {
-        'glow': '0 0 20px rgba(99, 102, 241, 0.3)',
-        'glow-lg': '0 0 40px rgba(99, 102, 241, 0.4)',
-        'glow-xl': '0 0 60px rgba(99, 102, 241, 0.5)',
-        'glow-cyan': '0 0 20px rgba(6, 182, 212, 0.3)',
-        'glow-cyan-lg': '0 0 40px rgba(6, 182, 212, 0.4)',
-        'glow-pink': '0 0 20px rgba(255, 0, 128, 0.3)',
-        'glow-green': '0 0 20px rgba(0, 255, 136, 0.3)',
-        'inner-glow': 'inset 0 0 20px rgba(99, 102, 241, 0.1)',
-        'inner-glow-lg': 'inset 0 0 40px rgba(99, 102, 241, 0.2)',
-        'neon': '0 0 5px #fff, 0 0 10px #fff, 0 0 20px #6366f1, 0 0 30px #6366f1, 0 0 40px #6366f1',
-        'neon-cyan': '0 0 5px #fff, 0 0 10px #fff, 0 0 20px #06b6d4, 0 0 30px #06b6d4, 0 0 40px #06b6d4',
-        'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.37)',
-        'card-hover': '0 20px 50px -10px rgba(99, 102, 241, 0.3)',
+        'card': '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+        'card-hover': '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+        'glow-sm': '0 0 10px rgba(99, 102, 241, 0.15)',
+        'glow': '0 0 20px rgba(99, 102, 241, 0.2)',
+        'glow-lg': '0 0 30px rgba(99, 102, 241, 0.25)',
+        'inner-light': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.05)',
       },
-      backdropBlur: {
-        xs: '2px',
-        '2xl': '40px',
-        '3xl': '64px',
-      },
+      // 边框圆角
       borderRadius: {
         '4xl': '2rem',
-        '5xl': '2.5rem',
       },
+      // 间距
+      spacing: {
+        '18': '4.5rem',
+        '88': '22rem',
+        '128': '32rem',
+      },
+      // 过渡
       transitionDuration: {
         '400': '400ms',
-        '600': '600ms',
-        '800': '800ms',
-        '900': '900ms',
-        '1500': '1500ms',
-        '2000': '2000ms',
-      },
-      scale: {
-        '102': '1.02',
-        '103': '1.03',
-        '104': '1.04',
-      },
-      blur: {
-        '4xl': '72px',
-        '5xl': '96px',
       },
     },
   },

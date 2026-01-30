@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { useAccount } from 'wagmi';
 import { useModalStore } from '../store/useStore';
 import { SUPPORTED_ASSETS } from '../types';
-import type { PlatformStats, MarketStatsItem } from '../types';
-import { api } from '../services/api';
+import type { MarketStatsItem } from '../types';
+import { usePlatformStats, useMarketStats } from '../hooks/useApiQueries';
 import InterestRateCurve from '../components/charts/InterestRateCurve';
 
 // 格式化简单数字
@@ -112,44 +112,22 @@ function formatUSD(value: string): string {
 
 export default function Markets() {
   const { isConnected } = useAccount();
-  const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null);
-  const [marketStats, setMarketStats] = useState<MarketStatsItem[]>([]);
-  const [isLoadingStats, setIsLoadingStats] = useState(true);
-  const [isLoadingMarkets, setIsLoadingMarkets] = useState(true);
 
-  // 加载平台统计数据和市场数据
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [statsResult, marketsResult] = await Promise.all([
-          api.getPlatformStats(),
-          api.getMarketStats(),
-        ]);
-
-        if (statsResult.data) {
-          setPlatformStats(statsResult.data);
-        }
-        setIsLoadingStats(false);
-
-        if (marketsResult.data?.markets) {
-          setMarketStats(marketsResult.data.markets);
-        }
-        setIsLoadingMarkets(false);
-      } catch (error) {
-        console.error('加载数据失败:', error);
-        setIsLoadingStats(false);
-        setIsLoadingMarkets(false);
-      }
-    };
-    loadData();
-  }, []);
+  // 使用 React Query hooks 加载数据
+  const { data: platformStats, isLoading: isLoadingStats } = usePlatformStats();
+  const { data: marketStatsResponse, isLoading: isLoadingMarkets } = useMarketStats();
+  const marketStats = marketStatsResponse?.markets || [];
 
   // 计算利用率
-  const utilizationRate = platformStats
-    ? ((parseFloat(platformStats.totalBorrows) / parseFloat(platformStats.totalDeposits)) * 100 || 0).toFixed(1)
-    : '0';
+  const utilizationRate = useMemo(() => {
+    if (!platformStats) return '0';
+    const deposits = parseFloat(platformStats.totalDeposits);
+    const borrows = parseFloat(platformStats.totalBorrows);
+    if (deposits === 0) return '0';
+    return ((borrows / deposits) * 100).toFixed(1);
+  }, [platformStats]);
 
-  const stats = [
+  const stats = useMemo(() => [
     {
       label: '总存款',
       value: platformStats ? formatUSD(platformStats.totalDeposits) : '$0',
@@ -171,7 +149,7 @@ export default function Markets() {
       icon: '⚡',
       isLoading: isLoadingStats
     },
-  ];
+  ], [platformStats, utilizationRate, isLoadingStats]);
 
   // 根据 symbol 查找市场数据
   const getMarketData = (symbol: string) => {

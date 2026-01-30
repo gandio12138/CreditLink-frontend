@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
-import { api } from '../services/api';
 import { useUserAccountData } from '../hooks/useLendingPool';
-import { useModalStore, useUserStore } from '../store/useStore';
+import { useModalStore } from '../store/useStore';
+import { useUserPositions, useUserActivities } from '../hooks/useApiQueries';
 import CreditScoreCard from '../components/credit/CreditScoreCard';
 import HealthFactorGauge from '../components/charts/HealthFactorGauge';
-import type { ActivityRecord } from '../types';
 
 // 格式化美元金额
 function formatUSD(value: string): string {
@@ -188,39 +186,8 @@ function StatCard({
 export default function Portfolio() {
   const { isConnected, address } = useAccount();
   const { data: accountData, isLoading: accountLoading } = useUserAccountData();
-  const { positions, setPositions } = useUserStore();
-  const [activities, setActivities] = useState<ActivityRecord[]>([]);
-  const [activitiesLoading, setActivitiesLoading] = useState(false);
-
-  // 加载持仓和活动记录
-  useEffect(() => {
-    if (!isConnected || !address) {
-      setPositions(null);
-      setActivities([]);
-      return;
-    }
-
-    const loadData = async () => {
-      setActivitiesLoading(true);
-      try {
-        const positionsResult = await api.getPositions();
-        if (positionsResult.data) {
-          setPositions(positionsResult.data);
-        }
-
-        const activitiesResult = await api.getActivities();
-        if (activitiesResult.data?.activities) {
-          setActivities(activitiesResult.data.activities);
-        }
-      } catch (error) {
-        console.error('加载数据失败:', error);
-      } finally {
-        setActivitiesLoading(false);
-      }
-    };
-
-    loadData();
-  }, [isConnected, address, setPositions]);
+  const { data: positions } = useUserPositions();
+  const { data: activities = [], isLoading: activitiesLoading } = useUserActivities();
 
   // 未连接钱包 - 增强版
   if (!isConnected) {

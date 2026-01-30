@@ -63,6 +63,13 @@ export default function BorrowModal({ asset, onClose }: BorrowModalProps) {
     }
   }, [borrowSuccess, creditBorrowSuccess]);
 
+  // 监听借款失败（包括用户取消）
+  useEffect(() => {
+    if (borrowError || creditBorrowError) {
+      setStep('input');
+    }
+  }, [borrowError, creditBorrowError]);
+
   // 解析输入金额
   const parsedAmount = amount
     ? parseUnits(amount, assetInfo?.decimals || 18)
@@ -136,8 +143,8 @@ export default function BorrowModal({ asset, onClose }: BorrowModalProps) {
   // 验证输入
   const isValidAmount = amount && parseFloat(amount) > 0;
 
-  // 按钮状态
-  const isLoading = borrowing || borrowConfirming || creditBorrowing || creditBorrowConfirming || step === 'signing';
+  // 按钮状态 - 包含 'borrowing' 步骤以防止在交易确认期间重复点击
+  const isLoading = borrowing || borrowConfirming || creditBorrowing || creditBorrowConfirming || step === 'signing' || step === 'borrowing';
 
   // 错误信息
   const error = borrowError || creditBorrowError;

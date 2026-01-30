@@ -62,6 +62,13 @@ export default function RepayModal({ asset, onClose }: RepayModalProps) {
     }
   }, [repaySuccess, refetchBalance, refetchDebt]);
 
+  // 监听操作失败（包括用户取消）
+  useEffect(() => {
+    if (approveError || repayError) {
+      setStep('input');
+    }
+  }, [approveError, repayError]);
+
   // 格式化余额
   const formattedBalance = balance
     ? formatUnits(balance, assetInfo?.decimals || 18)
@@ -134,8 +141,8 @@ export default function RepayModal({ asset, onClose }: RepayModalProps) {
     parseFloat(amount) <= parseFloat(formattedBalance) &&
     parseFloat(amount) <= parseFloat(debtBalance);
 
-  // 按钮状态
-  const isLoading = approving || approveConfirming || repaying || repayConfirming;
+  // 按钮状态 - 包含操作步骤以防止重复点击
+  const isLoading = approving || approveConfirming || repaying || repayConfirming || step === 'approve' || step === 'repaying';
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>

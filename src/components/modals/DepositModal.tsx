@@ -62,6 +62,13 @@ export default function DepositModal({ asset, onClose }: DepositModalProps) {
     }
   }, [depositSuccess, refetchBalance]);
 
+  // 监听操作失败（包括用户取消）
+  useEffect(() => {
+    if (approveError || depositError) {
+      setStep('input');
+    }
+  }, [approveError, depositError]);
+
   // 格式化余额
   const formattedBalance = balance
     ? formatUnits(balance, assetInfo?.decimals || 18)
@@ -113,8 +120,8 @@ export default function DepositModal({ asset, onClose }: DepositModalProps) {
   // 验证输入
   const isValidAmount = amount && parseFloat(amount) > 0 && parseFloat(amount) <= parseFloat(formattedBalance);
 
-  // 按钮状态
-  const isLoading = approving || approveConfirming || depositing || depositConfirming;
+  // 按钮状态 - 包含操作步骤以防止重复点击
+  const isLoading = approving || approveConfirming || depositing || depositConfirming || step === 'approve' || step === 'deposit';
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
