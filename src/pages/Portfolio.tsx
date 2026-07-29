@@ -40,6 +40,7 @@ const assetIcons: Record<string, string> = {
   USDT: '💵',
   USDC: '💲',
   ETH: '⟠',
+  WETH: '⟠',
   WBTC: '₿',
 };
 
@@ -185,9 +186,17 @@ function StatCard({
 
 export default function Portfolio() {
   const { isConnected, address } = useAccount();
-  const { data: accountData, isLoading: accountLoading } = useUserAccountData();
-  const { data: positions } = useUserPositions();
-  const { data: activities = [], isLoading: activitiesLoading } = useUserActivities();
+  const {
+    data: accountData,
+    isLoading: accountLoading,
+    isError: accountError,
+  } = useUserAccountData();
+  const { data: positions, isError: positionsError } = useUserPositions();
+  const {
+    data: activities = [],
+    isLoading: activitiesLoading,
+    isError: activitiesError,
+  } = useUserActivities();
 
   // 未连接钱包 - 增强版
   if (!isConnected) {
@@ -299,33 +308,39 @@ export default function Portfolio() {
         </div>
       </div>
 
+      {(accountError || positionsError || activitiesError) && (
+        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm">
+          链上账户或持仓数据不可用，未使用零值或模拟金额代替。
+        </div>
+      )}
+
       {/* 账户概览 - 增强版 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="总资产价值"
-          value={accountLoading ? '...' : formatUSD(accountData?.totalCollateralUSD || '0')}
+          value={accountLoading ? '...' : accountError || !accountData ? '--' : formatUSD(accountData.totalCollateralUSD)}
           color="emerald"
           icon="💎"
           index={0}
         />
         <StatCard
           label="总借款"
-          value={accountLoading ? '...' : formatUSD(accountData?.totalDebtUSD || '0')}
+          value={accountLoading ? '...' : accountError || !accountData ? '--' : formatUSD(accountData.totalDebtUSD)}
           color="amber"
           icon="📤"
           index={1}
         />
         <StatCard
           label="净资产"
-          value={accountLoading ? '...' : formatUSD(
-            (parseFloat(accountData?.totalCollateralUSD || '0') - parseFloat(accountData?.totalDebtUSD || '0')).toString()
+          value={accountLoading ? '...' : accountError || !accountData ? '--' : formatUSD(
+            (parseFloat(accountData.totalCollateralUSD) - parseFloat(accountData.totalDebtUSD)).toString()
           )}
           icon="💰"
           index={2}
         />
         <StatCard
           label="健康因子"
-          value={accountLoading ? '...' : healthStatus.value}
+          value={accountLoading ? '...' : accountError || !accountData ? '--' : healthStatus.value}
           color={healthStatus.color}
           icon={healthStatus.color === 'emerald' ? '✅' : healthStatus.color === 'amber' ? '⚠️' : '🚨'}
           index={3}
@@ -348,11 +363,15 @@ export default function Portfolio() {
             健康因子
           </h3>
           <div className="relative z-10 flex justify-center">
-            <HealthFactorGauge
-              healthFactor={healthFactor || 2.5}
-              size="md"
-              showLabels={true}
-            />
+            {accountError || !accountData ? (
+              <div className="py-16 text-gray-500">健康因子不可用</div>
+            ) : (
+              <HealthFactorGauge
+                healthFactor={healthFactor}
+                size="md"
+                showLabels={true}
+              />
+            )}
           </div>
           {healthFactor > 0 && healthFactor < 1.5 && (
             <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 relative z-10">

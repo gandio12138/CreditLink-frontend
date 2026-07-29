@@ -67,9 +67,10 @@ export interface SignRequest {
 // 签名响应
 export interface SignResponse {
   signature: string;
+  market: string;
   ltv: number;
   amountCap: string;
-  nonce: number;
+  nonce: string;
   deadline: number;
   creditScore: number;
   creditTier: string;
@@ -141,7 +142,7 @@ export interface BorrowParams {
   signature: string;
   ltv: number;
   amountCap: bigint;
-  nonce: number;
+  nonce: bigint;
   deadline: number;
 }
 
@@ -198,8 +199,10 @@ export interface PlatformStats {
 export interface MarketStatsItem {
   symbol: string;
   name: string;
-  totalSupply: string;
-  totalBorrow: string;
+  totalSupply: string; // USD value from the oracle-backed backend
+  totalBorrow: string; // USD value from the oracle-backed backend
+  totalSupplyAmount: string;
+  totalBorrowAmount: string;
   supplyAPY: string;
   borrowAPR: string;
   ltv: number;
@@ -217,7 +220,7 @@ export interface MarketStatsResponse {
 export const SUPPORTED_ASSETS = [
   { symbol: 'USDT', name: 'Tether USD', decimals: 6, icon: '💵' },
   { symbol: 'USDC', name: 'USD Coin', decimals: 6, icon: '💲' },
-  { symbol: 'ETH', name: 'Ethereum', decimals: 18, icon: '⟠' },
+  { symbol: 'WETH', name: 'Wrapped Ether', decimals: 18, icon: '⟠' },
   { symbol: 'WBTC', name: 'Wrapped Bitcoin', decimals: 8, icon: '₿' },
 ] as const;
 

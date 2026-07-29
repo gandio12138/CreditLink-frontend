@@ -1,44 +1,53 @@
 import { useMemo } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useChainId } from 'wagmi';
 import { useModalStore } from '../store/useStore';
 import { useUserAccountData } from '../hooks/useLendingPool';
 import { useMarketStats, useUserPositions } from '../hooks/useApiQueries';
+import { getAssetAddress } from '../config/contracts';
 import { SUPPORTED_ASSETS } from '../types';
 
 export default function Earn() {
   const { isConnected } = useAccount();
-  const { data: accountData, isLoading: accountLoading } = useUserAccountData();
-  const { data: marketResponse, isLoading: marketLoading } = useMarketStats();
-  const { data: positions } = useUserPositions();
+  const chainId = useChainId();
+  const {
+    data: accountData,
+    isLoading: accountLoading,
+    isError: accountError,
+  } = useUserAccountData();
+  const {
+    data: marketResponse,
+    isLoading: marketLoading,
+    isError: marketError,
+  } = useMarketStats();
+  const {
+    data: positions,
+    isLoading: positionsLoading,
+    isError: positionsError,
+  } = useUserPositions();
   const { openDepositModal, openWithdrawModal } = useModalStore();
 
   const marketStats = marketResponse?.markets || [];
 
-  // 合并资产列表和市场数据
+  // 只展示 API 返回且当前链已配置地址的市场。
   const earnAssets = useMemo(() => {
-    return SUPPORTED_ASSETS.map(asset => {
-      const marketData = marketStats.find(m => m.symbol === asset.symbol);
-      return {
-        ...asset,
-        supplyAPY: marketData?.supplyAPY || '3.5',
-        totalSupply: marketData?.totalSupply || '0',
-        utilization: marketData?.utilizationRate || '50',
-      };
+    return marketStats.flatMap((marketData) => {
+      const asset = SUPPORTED_ASSETS.find((item) => item.symbol === marketData.symbol);
+      if (!asset || !getAssetAddress(chainId, marketData.symbol)) return [];
+      return [{ ...asset, ...marketData }];
     });
-  }, [marketStats]);
+  }, [chainId, marketStats]);
 
   // 计算预估年收益和平均 APY
   const { estimatedYearlyEarnings, averageAPY } = useMemo(() => {
-    const totalCollateral = parseFloat(accountData?.totalCollateralUSD || '0');
-    if (totalCollateral === 0 || earnAssets.length === 0) {
-      return { estimatedYearlyEarnings: 0, averageAPY: 0 };
+    if (accountError || marketError || positionsError || !accountData || !positions || earnAssets.length === 0) {
+      return { estimatedYearlyEarnings: null, averageAPY: null };
     }
 
     // 计算加权平均 APY
     let weightedAPY = 0;
     let totalWeight = 0;
 
-    positions?.deposits?.forEach(deposit => {
+    positions.deposits.forEach(deposit => {
       const asset = earnAssets.find(a => a.symbol === deposit.symbol);
       if (asset) {
         const depositValue = parseFloat(deposit.valueUsd);
@@ -48,21 +57,16 @@ export default function Earn() {
       }
     });
 
-    // 如果没有存款数据，使用市场平均 APY
     if (totalWeight === 0) {
-      const avgAPY = earnAssets.reduce((sum, a) => sum + parseFloat(a.supplyAPY), 0) / earnAssets.length;
-      return {
-        estimatedYearlyEarnings: (totalCollateral * avgAPY) / 100,
-        averageAPY: avgAPY,
-      };
+      return { estimatedYearlyEarnings: 0, averageAPY: 0 };
     }
 
     const avgAPY = weightedAPY / totalWeight;
     return {
-      estimatedYearlyEarnings: (totalCollateral * avgAPY) / 100,
+      estimatedYearlyEarnings: (totalWeight * avgAPY) / 100,
       averageAPY: avgAPY,
     };
-  }, [accountData, earnAssets, positions]);
+  }, [accountData, accountError, earnAssets, marketError, positions, positionsError]);
 
   // 格式化数字
   const formatUSD = (value: number | string) => {
@@ -100,7 +104,8 @@ export default function Earn() {
     );
   }
 
-  const isLoading = accountLoading || marketLoading;
+  const isLoading = accountLoading || marketLoading || positionsLoading;
+  const hasDataError = accountError || marketError || positionsError;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -110,12 +115,20 @@ export default function Earn() {
         <p className="text-slate-400 mt-1">存入资产赚取利息收益</p>
       </div>
 
+      {hasDataError && (
+        <div className="p-4 rounded-xl bg-danger-500/10 border border-danger-500/30 text-danger-300 text-sm">
+          链上账户或市场数据不可用，收益估算和操作已停用。
+        </div>
+      )}
+
       {/* 存款概览 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card p-5">
           <div className="text-sm text-slate-400 mb-1">总存款价值</div>
           {isLoading ? (
             <div className="h-8 w-24 skeleton rounded" />
+          ) : accountError || !accountData ? (
+            <div className="text-2xl font-semibold text-slate-500">--</div>
           ) : (
             <div className="text-2xl font-semibold text-slate-100 tabular-nums">
               {formatUSD(accountData?.totalCollateralUSD || '0')}
@@ -126,6 +139,8 @@ export default function Earn() {
           <div className="text-sm text-slate-400 mb-1">预估年收益</div>
           {isLoading ? (
             <div className="h-8 w-24 skeleton rounded" />
+          ) : estimatedYearlyEarnings == null ? (
+            <div className="text-2xl font-semibold text-slate-500">--</div>
           ) : (
             <div className="text-2xl font-semibold text-success-400 tabular-nums">
               {formatUSD(estimatedYearlyEarnings)}
@@ -136,6 +151,8 @@ export default function Earn() {
           <div className="text-sm text-slate-400 mb-1">平均 APY</div>
           {isLoading ? (
             <div className="h-8 w-16 skeleton rounded" />
+          ) : averageAPY == null ? (
+            <div className="text-2xl font-semibold text-slate-500">--</div>
           ) : (
             <div className="text-2xl font-semibold text-success-400 tabular-nums">
               {averageAPY.toFixed(2)}%
@@ -171,7 +188,7 @@ export default function Earn() {
                   <div className="flex items-center gap-6">
                     <div className="text-right">
                       <div className="text-sm text-slate-400">APY</div>
-                      <div className="font-medium text-success-400">{marketData?.supplyAPY || '3.5'}%</div>
+                      <div className="font-medium text-success-400">{marketData ? `${marketData.supplyAPY}%` : '--'}</div>
                     </div>
                     <button
                       onClick={() => openWithdrawModal(deposit.symbol)}
@@ -207,6 +224,8 @@ export default function Earn() {
                 <div className="h-8 w-32 skeleton rounded" />
               </div>
             ))
+          ) : earnAssets.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">当前网络暂无已配置的存款市场</div>
           ) : (
             earnAssets.map(asset => (
               <div
@@ -237,22 +256,24 @@ export default function Earn() {
                       <div className="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-primary-500 rounded-full"
-                          style={{ width: `${Math.min(parseFloat(asset.utilization), 100)}%` }}
+                          style={{ width: `${Math.min(parseFloat(asset.utilizationRate), 100)}%` }}
                         />
                       </div>
-                      <span className="text-sm text-slate-400">{parseFloat(asset.utilization).toFixed(1)}%</span>
+                      <span className="text-sm text-slate-400">{parseFloat(asset.utilizationRate).toFixed(1)}%</span>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => openDepositModal(asset.symbol)}
-                      className="btn-success"
+                      disabled={hasDataError}
+                      className="btn-success disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       存款
                     </button>
                     <button
                       onClick={() => openWithdrawModal(asset.symbol)}
-                      className="btn-secondary"
+                      disabled={hasDataError}
+                      className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       提取
                     </button>

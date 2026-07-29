@@ -11,14 +11,17 @@ import type {
   MarketStatsResponse,
   RiskParamsResponse,
 } from '../types';
-import {
-  MOCK_PLATFORM_STATS,
-  MOCK_MARKET_STATS,
-  MOCK_CREDIT_INFO,
-  MOCK_ACCOUNT_DATA,
-  MOCK_USER_POSITIONS,
-  MOCK_ACTIVITIES,
-} from '../data/mockData';
+
+function requireApiData<T>(
+  result: { data?: T; error?: string },
+  fallbackMessage: string,
+): T {
+  if (result.error || result.data == null) {
+    throw new Error(result.error || fallbackMessage);
+  }
+
+  return result.data;
+}
 
 // ==================== Query Keys ====================
 // 统一管理所有查询的key，便于缓存失效和依赖管理
@@ -56,15 +59,10 @@ export function useAccountData() {
     queryKey: queryKeys.user.account(),
     queryFn: async (): Promise<AccountData> => {
       const result = await api.getAccount();
-      if (result.error || !result.data) {
-        console.warn('获取账户数据失败，使用模拟数据:', result.error);
-        return MOCK_ACCOUNT_DATA;
-      }
-      return result.data;
+      return requireApiData(result, '获取账户数据失败：响应缺少 data');
     },
     enabled: isConnected && isAuthenticated,
     staleTime: 30 * 1000, // 30秒内数据视为新鲜
-    placeholderData: MOCK_ACCOUNT_DATA,
   });
 }
 
@@ -78,19 +76,10 @@ export function useUserPositions() {
     queryKey: queryKeys.user.positions(),
     queryFn: async (): Promise<UserPositions> => {
       const result = await api.getPositions();
-      if (result.error || !result.data) {
-        console.warn('获取持仓数据失败，使用模拟数据:', result.error);
-        return MOCK_USER_POSITIONS;
-      }
-      // 如果数据为空，使用模拟数据
-      if (result.data.deposits.length === 0 && result.data.borrows.length === 0) {
-        return MOCK_USER_POSITIONS;
-      }
-      return result.data;
+      return requireApiData(result, '获取持仓数据失败：响应缺少 data');
     },
     enabled: isConnected && isAuthenticated,
     staleTime: 30 * 1000,
-    placeholderData: MOCK_USER_POSITIONS,
   });
 }
 
@@ -104,19 +93,10 @@ export function useUserActivities() {
     queryKey: queryKeys.user.activities(),
     queryFn: async (): Promise<ActivityRecord[]> => {
       const result = await api.getActivities();
-      if (result.error || !result.data) {
-        console.warn('获取活动记录失败，使用模拟数据:', result.error);
-        return MOCK_ACTIVITIES;
-      }
-      // 如果数据为空，使用模拟数据
-      if (result.data.activities.length === 0) {
-        return MOCK_ACTIVITIES;
-      }
-      return result.data.activities;
+      return requireApiData(result, '获取活动记录失败：响应缺少 data').activities;
     },
     enabled: isConnected && isAuthenticated,
     staleTime: 60 * 1000, // 活动记录1分钟内视为新鲜
-    placeholderData: MOCK_ACTIVITIES,
   });
 }
 
@@ -130,18 +110,13 @@ export function useCreditInfo() {
     queryKey: queryKeys.user.credit(),
     queryFn: async (): Promise<CreditInfo> => {
       const result = await api.getCredit();
-      if (result.error || !result.data) {
-        console.warn('获取信用信息失败，使用模拟数据:', result.error);
-        setCreditInfo(MOCK_CREDIT_INFO);
-        return MOCK_CREDIT_INFO;
-      }
+      const data = requireApiData(result, '获取信用信息失败：响应缺少 data');
       // 同步到zustand store以便其他组件使用
-      setCreditInfo(result.data);
-      return result.data;
+      setCreditInfo(data);
+      return data;
     },
     enabled: isConnected && isAuthenticated,
     staleTime: 5 * 60 * 1000, // 信用信息5分钟内视为新鲜
-    placeholderData: MOCK_CREDIT_INFO,
   });
 }
 
@@ -172,15 +147,10 @@ export function usePlatformStats() {
     queryKey: queryKeys.platform.stats(),
     queryFn: async (): Promise<PlatformStats> => {
       const result = await api.getPlatformStats();
-      if (result.error || !result.data) {
-        console.warn('获取平台统计失败，使用模拟数据:', result.error);
-        return MOCK_PLATFORM_STATS;
-      }
-      return result.data;
+      return requireApiData(result, '获取平台统计失败：响应缺少 data');
     },
     staleTime: 60 * 1000, // 平台统计1分钟内视为新鲜
     refetchInterval: 60 * 1000, // 每分钟自动刷新
-    placeholderData: MOCK_PLATFORM_STATS,
   });
 }
 
@@ -191,19 +161,10 @@ export function useMarketStats() {
     queryKey: queryKeys.market.stats(),
     queryFn: async (): Promise<MarketStatsResponse> => {
       const result = await api.getMarketStats();
-      if (result.error || !result.data) {
-        console.warn('获取市场数据失败，使用模拟数据:', result.error);
-        return { markets: MOCK_MARKET_STATS };
-      }
-      // 如果市场数据为空，使用模拟数据
-      if (result.data.markets.length === 0) {
-        return { markets: MOCK_MARKET_STATS };
-      }
-      return result.data;
+      return requireApiData(result, '获取市场数据失败：响应缺少 data');
     },
     staleTime: 30 * 1000,
     refetchInterval: 30 * 1000, // 每30秒自动刷新市场数据
-    placeholderData: { markets: MOCK_MARKET_STATS },
   });
 }
 
@@ -212,13 +173,9 @@ export function useMarketStats() {
 export function useRiskParams() {
   return useQuery({
     queryKey: queryKeys.market.riskParams(),
-    queryFn: async (): Promise<RiskParamsResponse | null> => {
+    queryFn: async (): Promise<RiskParamsResponse> => {
       const result = await api.getRiskParams();
-      if (result.error || !result.data) {
-        console.warn('获取风险参数失败:', result.error);
-        return null;
-      }
-      return result.data;
+      return requireApiData(result, '获取风险参数失败：响应缺少 data');
     },
     staleTime: 5 * 60 * 1000, // 风险参数5分钟内视为新鲜
   });
@@ -232,11 +189,7 @@ export function useAssetRiskParams(asset: string | undefined) {
     queryFn: async () => {
       if (!asset) return null;
       const result = await api.getAssetRiskParams(asset);
-      if (result.error || !result.data) {
-        console.warn('获取资产风险参数失败:', result.error);
-        return null;
-      }
-      return result.data;
+      return requireApiData(result, '获取资产风险参数失败：响应缺少 data');
     },
     enabled: !!asset,
     staleTime: 5 * 60 * 1000,

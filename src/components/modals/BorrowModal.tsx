@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAccount, useChainId } from 'wagmi';
-import { parseUnits } from 'viem';
-import { getContractAddresses } from '../../config/contracts';
-import { useBorrow, useBorrowWithCredit, useUserAccountData } from '../../hooks/useLendingPool';
-import { useUserStore } from '../../store/useStore';
+import { keccak256, parseUnits, toBytes } from 'viem';
+import { getAssetAddress } from '../../config/contracts';
+import { useBorrowWithCredit, useUserAccountData } from '../../hooks/useLendingPool';
+import { useCreditInfo, useMarketStats } from '../../hooks/useApiQueries';
 import { api } from '../../services/api';
 import { SUPPORTED_ASSETS } from '../../types';
 
@@ -15,36 +15,27 @@ interface BorrowModalProps {
 export default function BorrowModal({ asset, onClose }: BorrowModalProps) {
   const { isConnected } = useAccount();
   const chainId = useChainId();
-  const addresses = getContractAddresses(chainId);
-  const { creditInfo } = useUserStore();
+  const { data: creditInfo, isLoading: creditLoading, isError: creditError } = useCreditInfo();
+  const { data: marketResponse, isLoading: marketLoading, isError: marketError } = useMarketStats();
 
   const assetInfo = SUPPORTED_ASSETS.find((a) => a.symbol === asset);
-  const assetAddress = addresses[asset as keyof typeof addresses] as `0x${string}`;
+  const assetAddress = getAssetAddress(chainId, asset);
+  const marketData = marketResponse?.markets.find((market) => market.symbol === asset);
 
   const [amount, setAmount] = useState('');
-  const [useCreditBorrow, setUseCreditBorrow] = useState(true);
+  const [requestError, setRequestError] = useState<string | null>(null);
   const [step, setStep] = useState<'input' | 'signing' | 'borrowing' | 'success'>('input');
   const [signatureData, setSignatureData] = useState<{
     signature: string;
+    market: string;
     ltv: number;
     amountCap: string;
-    nonce: number;
+    nonce: string;
     deadline: number;
   } | null>(null);
 
   // 获取账户数据
-  const { data: accountData } = useUserAccountData();
-
-  // 借款hooks
-  const {
-    borrow,
-    isPending: borrowing,
-    isConfirming: borrowConfirming,
-    isSuccess: borrowSuccess,
-    hash: borrowHash,
-    error: borrowError,
-    reset: resetBorrow,
-  } = useBorrow();
+  const { data: accountData, isLoading: accountLoading, isError: accountError } = useUserAccountData();
 
   const {
     borrowWithCredit,
@@ -58,38 +49,43 @@ export default function BorrowModal({ asset, onClose }: BorrowModalProps) {
 
   // 监听借款成功
   useEffect(() => {
-    if (borrowSuccess || creditBorrowSuccess) {
+    if (creditBorrowSuccess) {
       setStep('success');
     }
-  }, [borrowSuccess, creditBorrowSuccess]);
+  }, [creditBorrowSuccess]);
 
   // 监听借款失败（包括用户取消）
   useEffect(() => {
-    if (borrowError || creditBorrowError) {
+    if (creditBorrowError) {
       setStep('input');
     }
-  }, [borrowError, creditBorrowError]);
+  }, [creditBorrowError]);
 
   // 解析输入金额
-  const parsedAmount = amount
-    ? parseUnits(amount, assetInfo?.decimals || 18)
-    : BigInt(0);
+  const parsedAmount = useMemo(() => {
+    if (!amount || !assetInfo) return null;
+    try {
+      return parseUnits(amount, assetInfo.decimals);
+    } catch {
+      return null;
+    }
+  }, [amount, assetInfo]);
 
   // 可借额度
-  const availableBorrow = accountData?.availableBorrowUSD || '0';
-  const maxBorrowWithCredit = creditInfo?.maxBorrow || '0';
+  const availableBorrow = accountData?.availableBorrowUSD;
 
   // 获取签名并借款
   const handleCreditBorrow = async () => {
-    if (!assetAddress || parsedAmount <= BigInt(0)) return;
+    if (!assetAddress || !marketData || !parsedAmount || parsedAmount <= 0n) return;
 
     // 重置之前的错误状态
     resetCreditBorrow();
+    setRequestError(null);
     setStep('signing');
     try {
       // 请求签名
       const result = await api.requestCreditSign({
-        market: asset,
+        market: marketData.symbol,
         amount: parsedAmount.toString(),
       });
 
@@ -100,10 +96,13 @@ export default function BorrowModal({ asset, onClose }: BorrowModalProps) {
       setSignatureData(result.data);
       setStep('borrowing');
 
+      const signedMarketId = keccak256(toBytes(result.data.market));
+
       // 执行信用借款
       await borrowWithCredit(
         assetAddress,
         parsedAmount,
+        signedMarketId,
         BigInt(result.data.ltv),
         BigInt(result.data.amountCap),
         BigInt(result.data.nonce),
@@ -112,48 +111,25 @@ export default function BorrowModal({ asset, onClose }: BorrowModalProps) {
       );
     } catch (error) {
       console.error('信用借款失败:', error);
+      setRequestError(error instanceof Error ? error.message : '信用借款失败');
       setStep('input');
-    }
-  };
-
-  // 普通借款
-  const handleNormalBorrow = async () => {
-    if (!assetAddress || parsedAmount <= BigInt(0)) return;
-
-    // 重置之前的错误状态
-    resetBorrow();
-    setStep('borrowing');
-    try {
-      await borrow(assetAddress, parsedAmount);
-    } catch (error) {
-      console.error('借款失败:', error);
-      setStep('input');
-    }
-  };
-
-  // 处理借款
-  const handleBorrow = () => {
-    if (useCreditBorrow && creditInfo && creditInfo.tier !== 'D') {
-      handleCreditBorrow();
-    } else {
-      handleNormalBorrow();
     }
   };
 
   // 验证输入
-  const isValidAmount = amount && parseFloat(amount) > 0;
+  const isDataUnavailable = !assetInfo || !assetAddress || !marketData || !creditInfo || !accountData ||
+    creditInfo.tier === 'D' || accountLoading || creditLoading || marketLoading ||
+    accountError || creditError || marketError;
+  const isValidAmount = !!parsedAmount && parsedAmount > 0n;
 
   // 按钮状态 - 包含 'borrowing' 步骤以防止在交易确认期间重复点击
-  const isLoading = borrowing || borrowConfirming || creditBorrowing || creditBorrowConfirming || step === 'signing' || step === 'borrowing';
+  const isLoading = creditBorrowing || creditBorrowConfirming || step === 'signing' || step === 'borrowing';
 
   // 错误信息
-  const error = borrowError || creditBorrowError;
+  const error = creditBorrowError;
 
   // 交易hash
-  const hash = borrowHash || creditBorrowHash;
-
-  // 是否可以使用信用借款
-  const canUseCreditBorrow = creditInfo && creditInfo.tier !== 'D';
+  const hash = creditBorrowHash;
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
@@ -185,7 +161,7 @@ export default function BorrowModal({ asset, onClose }: BorrowModalProps) {
             <h3 className="text-lg font-semibold mb-2">借款成功!</h3>
             <p className="text-gray-400 mb-4">
               已成功借入 {amount} {asset}
-              {useCreditBorrow && signatureData && (
+              {signatureData && (
                 <span className="block text-sm mt-1">
                   使用信用LTV: {signatureData.ltv / 100}%
                 </span>
@@ -210,38 +186,12 @@ export default function BorrowModal({ asset, onClose }: BorrowModalProps) {
           </div>
         ) : (
           <>
-            {/* 借款模式选择 */}
-            {canUseCreditBorrow && (
-              <div className="flex gap-2 mb-4">
-                <button
-                  onClick={() => setUseCreditBorrow(true)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    useCreditBorrow
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
-                >
-                  信用借款
-                </button>
-                <button
-                  onClick={() => setUseCreditBorrow(false)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    !useCreditBorrow
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
-                >
-                  普通借款
-                </button>
-              </div>
-            )}
-
             {/* 输入区域 */}
             <div className="bg-gray-900 rounded-xl p-4 mb-4">
               <div className="flex justify-between text-sm text-gray-400 mb-2">
                 <span>借款金额</span>
                 <span>
-                  可借: ${useCreditBorrow ? Number(maxBorrowWithCredit).toLocaleString() : parseFloat(availableBorrow).toFixed(2)}
+                  账户可借: {availableBorrow == null ? '--' : `$${parseFloat(availableBorrow).toFixed(2)} USD`}
                 </span>
               </div>
               <div className="flex items-center gap-3">
@@ -258,7 +208,7 @@ export default function BorrowModal({ asset, onClose }: BorrowModalProps) {
             </div>
 
             {/* 信用借款优势 */}
-            {useCreditBorrow && creditInfo && (
+            {creditInfo && (
               <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-4 mb-4">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-purple-400 font-semibold">信用等级: {creditInfo.tier}</span>
@@ -266,7 +216,7 @@ export default function BorrowModal({ asset, onClose }: BorrowModalProps) {
                 </div>
                 <div className="text-sm text-gray-300">
                   您的信用LTV为 <span className="text-purple-400 font-semibold">{creditInfo.maxLtv / 100}%</span>
-                  ，高于基础LTV 70%
+                  {marketData ? `，市场基础 LTV 为 ${marketData.ltv / 100}%` : ''}
                 </div>
               </div>
             )}
@@ -275,26 +225,30 @@ export default function BorrowModal({ asset, onClose }: BorrowModalProps) {
             <div className="space-y-3 mb-6">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">借款APR</span>
-                <span className="text-yellow-400">5.1%</span>
+                <span className="text-yellow-400">{marketData ? `${marketData.borrowAPR}%` : '--'}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">LTV</span>
                 <span>
-                  {useCreditBorrow && creditInfo
-                    ? `${creditInfo.maxLtv / 100}% (信用)`
-                    : '70% (基础)'}
+                  {creditInfo ? `${creditInfo.maxLtv / 100}% (信用)` : '--'}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">清算阈值</span>
-                <span>85%</span>
+                <span>{marketData ? `${marketData.liquidationLtv / 100}%` : '--'}</span>
               </div>
             </div>
 
-            {/* 错误提示 */}
-            {error && (
+            {isDataUnavailable && (
               <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-4 text-red-400 text-sm">
-                {error.message || '操作失败，请重试'}
+                当前市场、信用、预言机或新版合约地址不可用，借款已停用。
+              </div>
+            )}
+
+            {/* 错误提示 */}
+            {(error || requestError) && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-4 text-red-400 text-sm">
+                {requestError || error?.message || '操作失败，请重试'}
               </div>
             )}
 
@@ -307,10 +261,10 @@ export default function BorrowModal({ asset, onClose }: BorrowModalProps) {
 
             {/* 按钮 */}
             <button
-              onClick={handleBorrow}
-              disabled={!isConnected || !isValidAmount || isLoading}
+              onClick={handleCreditBorrow}
+              disabled={!isConnected || !isValidAmount || isLoading || isDataUnavailable}
               className={`w-full py-3 rounded-lg font-medium transition-colors ${
-                !isConnected || !isValidAmount || isLoading
+                !isConnected || !isValidAmount || isLoading || isDataUnavailable
                   ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
                   : 'bg-purple-600 hover:bg-purple-700'
               }`}
@@ -321,9 +275,9 @@ export default function BorrowModal({ asset, onClose }: BorrowModalProps) {
                 ? step === 'signing'
                   ? '获取签名中...'
                   : '借款中...'
-                : useCreditBorrow
-                ? '信用借款'
-                : '借款'}
+                : isDataUnavailable
+                ? '数据或合约未配置'
+                : '信用借款'}
             </button>
 
             {/* 风险提示 */}

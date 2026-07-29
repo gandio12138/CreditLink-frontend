@@ -39,12 +39,21 @@ npm run preview
 
 ## 环境配置
 
-创建 `.env` 文件：
+复制 `.env.example` 为 `.env`，并填入本次 Sepolia Ignition 部署输出的地址：
 
 ```env
 VITE_WALLET_CONNECT_PROJECT_ID=your-project-id
-VITE_API_BASE_URL=http://localhost:8080
+VITE_API_BASE_URL=http://localhost:8080/api/v1
+VITE_SEPOLIA_LENDING_POOL_ADDRESS=0x...
+VITE_SEPOLIA_RISK_REGISTRY_ADDRESS=0x...
+VITE_SEPOLIA_PRICE_ORACLE_ADDRESS=0x...
+VITE_SEPOLIA_INCENTIVE_CONTROLLER_ADDRESS=0x...
+VITE_SEPOLIA_TREASURY_ADDRESS=0x...
+VITE_SEPOLIA_USDC_ADDRESS=0x...
+VITE_SEPOLIA_WETH_ADDRESS=0x...
 ```
+
+地址缺失、非法或为零地址时，Sepolia 链上读取和交易会保持禁用；前端不会回退到旧部署或本地地址。当前真实 Feed 部署仅启用 USDC 与 WETH，USDT/WBTC 变量应留空。
 
 ## 项目结构
 

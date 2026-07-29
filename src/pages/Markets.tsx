@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useChainId } from 'wagmi';
 import { useModalStore } from '../store/useStore';
 import { SUPPORTED_ASSETS } from '../types';
 import type { MarketStatsItem } from '../types';
 import { usePlatformStats, useMarketStats } from '../hooks/useApiQueries';
+import { getAssetAddress } from '../config/contracts';
 import InterestRateCurve from '../components/charts/InterestRateCurve';
 
 // 格式化简单数字
@@ -22,15 +23,11 @@ function MarketRowEnhanced({
   marketData
 }: {
   asset: typeof SUPPORTED_ASSETS[number];
-  marketData?: MarketStatsItem;
+  marketData: MarketStatsItem;
 }) {
   const { openDepositModal, openBorrowModal } = useModalStore();
 
-  const totalSupply = marketData?.totalSupply || '0';
-  const totalBorrow = marketData?.totalBorrow || '0';
-  const supplyAPY = marketData?.supplyAPY || '0';
-  const borrowAPR = marketData?.borrowAPR || '2.00';
-  const utilizationRate = marketData?.utilizationRate || '0';
+  const { totalSupply, totalBorrow, supplyAPY, borrowAPR, utilizationRate } = marketData;
 
   return (
     <tr className="border-b border-primary-500/10 hover:bg-gradient-to-r hover:from-primary-500/5 hover:to-cyan-500/5 transition-all duration-300 group">
@@ -112,15 +109,29 @@ function formatUSD(value: string): string {
 
 export default function Markets() {
   const { isConnected } = useAccount();
+  const chainId = useChainId();
 
   // 使用 React Query hooks 加载数据
-  const { data: platformStats, isLoading: isLoadingStats } = usePlatformStats();
-  const { data: marketStatsResponse, isLoading: isLoadingMarkets } = useMarketStats();
+  const {
+    data: platformStats,
+    isLoading: isLoadingStats,
+    isError: isPlatformError,
+  } = usePlatformStats();
+  const {
+    data: marketStatsResponse,
+    isLoading: isLoadingMarkets,
+    isError: isMarketError,
+  } = useMarketStats();
   const marketStats = marketStatsResponse?.markets || [];
+  const configuredMarkets = useMemo(() => marketStats.flatMap((marketData) => {
+    const asset = SUPPORTED_ASSETS.find((item) => item.symbol === marketData.symbol);
+    if (!asset || !getAssetAddress(chainId, marketData.symbol)) return [];
+    return [{ asset, marketData }];
+  }), [chainId, marketStats]);
 
   // 计算利用率
   const utilizationRate = useMemo(() => {
-    if (!platformStats) return '0';
+    if (!platformStats) return null;
     const deposits = parseFloat(platformStats.totalDeposits);
     const borrows = parseFloat(platformStats.totalBorrows);
     if (deposits === 0) return '0';
@@ -130,31 +141,26 @@ export default function Markets() {
   const stats = useMemo(() => [
     {
       label: '总存款',
-      value: platformStats ? formatUSD(platformStats.totalDeposits) : '$0',
+      value: platformStats ? formatUSD(platformStats.totalDeposits) : '--',
       gradient: 'from-emerald-500 to-teal-500',
       icon: '💰',
       isLoading: isLoadingStats
     },
     {
       label: '总借款',
-      value: platformStats ? formatUSD(platformStats.totalBorrows) : '$0',
+      value: platformStats ? formatUSD(platformStats.totalBorrows) : '--',
       gradient: 'from-violet-500 to-purple-500',
       icon: '📊',
       isLoading: isLoadingStats
     },
     {
       label: '平均利用率',
-      value: `${utilizationRate}%`,
+      value: utilizationRate == null ? '--' : `${utilizationRate}%`,
       gradient: 'from-cyan-500 to-blue-500',
       icon: '⚡',
       isLoading: isLoadingStats
     },
   ], [platformStats, utilizationRate, isLoadingStats]);
-
-  // 根据 symbol 查找市场数据
-  const getMarketData = (symbol: string) => {
-    return marketStats.find(m => m.symbol === symbol);
-  };
 
   return (
     <div className="space-y-8">
@@ -166,7 +172,9 @@ export default function Markets() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary-500" />
             </span>
-            <span className="text-xs text-primary-300 font-medium">实时数据</span>
+            <span className="text-xs text-primary-300 font-medium">
+              {isPlatformError || isMarketError ? '数据不可用' : isLoadingMarkets ? '数据加载中' : '实时数据'}
+            </span>
           </div>
           <h1 className="text-4xl font-bold">
             <span className="text-gradient">借贷市场</span>
@@ -182,6 +190,12 @@ export default function Markets() {
           </div>
         )}
       </div>
+
+      {(isPlatformError || isMarketError) && (
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+          预言机或市场 API 数据不可用，已停用市场操作。
+        </div>
+      )}
 
       {/* 市场统计 - 增强版 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -255,12 +269,16 @@ export default function Markets() {
                     <td className="py-5 px-6"><div className="skeleton h-10 w-32" /></td>
                   </tr>
                 ))
+              ) : configuredMarkets.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-gray-500">当前网络暂无已配置的市场数据</td>
+                </tr>
               ) : (
-                SUPPORTED_ASSETS.map((asset) => (
+                configuredMarkets.map(({ asset, marketData }) => (
                   <MarketRowEnhanced
                     key={asset.symbol}
                     asset={asset}
-                    marketData={getMarketData(asset.symbol)}
+                    marketData={marketData}
                   />
                 ))
               )}
@@ -296,7 +314,7 @@ export default function Markets() {
                   optimalUtilization={80}
                   slope1={4}
                   slope2={75}
-                  currentUtilization={parseFloat(utilizationRate)}
+                  currentUtilization={utilizationRate == null ? 0 : parseFloat(utilizationRate)}
                   creditDiscount={0}
                 />
               </div>

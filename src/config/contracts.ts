@@ -1,17 +1,50 @@
-// 合约地址配置 - 根据部署网络更新
+import { isAddress, zeroAddress } from 'viem';
+
+type Address = `0x${string}`;
+
+export interface ContractAddresses {
+  LendingPool: Address;
+  RiskRegistry: Address;
+  PriceOracle: Address;
+  IncentiveController: Address;
+  Treasury: Address;
+  USDT: Address;
+  USDC: Address;
+  WETH: Address;
+  WBTC: Address;
+}
+
+function optionalEnvAddress(value: string | undefined): Address {
+  return value && isAddress(value) && value.toLowerCase() !== zeroAddress
+    ? value
+    : zeroAddress;
+}
+
+const UNCONFIGURED_ADDRESSES: ContractAddresses = {
+  LendingPool: zeroAddress,
+  RiskRegistry: zeroAddress,
+  PriceOracle: zeroAddress,
+  IncentiveController: zeroAddress,
+  Treasury: zeroAddress,
+  USDT: zeroAddress,
+  USDC: zeroAddress,
+  WETH: zeroAddress,
+  WBTC: zeroAddress,
+};
+
+// Sepolia 地址必须来自当前部署的环境变量，避免误用旧的 mock oracle 部署。
 export const CONTRACT_ADDRESSES = {
   // Sepolia测试网
   11155111: {
-    LendingPool: '0x98938e68753db6c4c0c8b6f2c7beac8bf5de41e4' as `0x${string}`,
-    RiskRegistry: '0xe039ea4c86e0523dd09b2dc8d02bc48c052209a7' as `0x${string}`,
-    PriceOracle: '0x21041287e0227bf5089797fba3e2935cfc74a93b' as `0x${string}`,
-    IncentiveController: '0xb69b7579405de8e4a3c57d986177d37863b4e6c2' as `0x${string}`,
-    Treasury: '0x9b23f38db946080493e64cb1686c205a8bf62f06' as `0x${string}`,
-    // 测试代币
-    USDT: '0x5eb9f33ab23c97a9a4ca513cf0fb940460db6350' as `0x${string}`,
-    USDC: '0xa4ab85165d76e1f630ab366d3b562e86932542b8' as `0x${string}`,
-    WETH: '0x31087dbbbdce3941aa4b3a4d0223ff264bd4f81c' as `0x${string}`,
-    WBTC: '0x0000000000000000000000000000000000000000' as `0x${string}`,
+    LendingPool: optionalEnvAddress(import.meta.env.VITE_SEPOLIA_LENDING_POOL_ADDRESS),
+    RiskRegistry: optionalEnvAddress(import.meta.env.VITE_SEPOLIA_RISK_REGISTRY_ADDRESS),
+    PriceOracle: optionalEnvAddress(import.meta.env.VITE_SEPOLIA_PRICE_ORACLE_ADDRESS),
+    IncentiveController: optionalEnvAddress(import.meta.env.VITE_SEPOLIA_INCENTIVE_CONTROLLER_ADDRESS),
+    Treasury: optionalEnvAddress(import.meta.env.VITE_SEPOLIA_TREASURY_ADDRESS),
+    USDT: optionalEnvAddress(import.meta.env.VITE_SEPOLIA_USDT_ADDRESS),
+    USDC: optionalEnvAddress(import.meta.env.VITE_SEPOLIA_USDC_ADDRESS),
+    WETH: optionalEnvAddress(import.meta.env.VITE_SEPOLIA_WETH_ADDRESS),
+    WBTC: optionalEnvAddress(import.meta.env.VITE_SEPOLIA_WBTC_ADDRESS),
   },
   // Base Sepolia测试网
   84532: {
@@ -49,7 +82,6 @@ export const LENDING_POOL_ABI = [
     inputs: [
       { name: 'asset', type: 'address' },
       { name: 'amount', type: 'uint256' },
-      { name: 'onBehalfOf', type: 'address' },
     ],
     outputs: [],
   },
@@ -61,11 +93,10 @@ export const LENDING_POOL_ABI = [
     inputs: [
       { name: 'asset', type: 'address' },
       { name: 'amount', type: 'uint256' },
-      { name: 'to', type: 'address' },
     ],
-    outputs: [{ name: '', type: 'uint256' }],
+    outputs: [],
   },
-  // 普通借款
+  // 带信用签名的借款
   {
     name: 'borrow',
     type: 'function',
@@ -73,19 +104,8 @@ export const LENDING_POOL_ABI = [
     inputs: [
       { name: 'asset', type: 'address' },
       { name: 'amount', type: 'uint256' },
-      { name: 'onBehalfOf', type: 'address' },
-    ],
-    outputs: [],
-  },
-  // 信用借款（带签名）
-  {
-    name: 'borrowWithCredit',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'asset', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'onBehalfOf', type: 'address' },
+      { name: 'user', type: 'address' },
+      { name: 'market', type: 'bytes32' },
       { name: 'ltv', type: 'uint256' },
       { name: 'amountCap', type: 'uint256' },
       { name: 'nonce', type: 'uint256' },
@@ -102,9 +122,8 @@ export const LENDING_POOL_ABI = [
     inputs: [
       { name: 'asset', type: 'address' },
       { name: 'amount', type: 'uint256' },
-      { name: 'onBehalfOf', type: 'address' },
     ],
-    outputs: [{ name: '', type: 'uint256' }],
+    outputs: [],
   },
   // 获取用户账户数据
   {
@@ -130,28 +149,34 @@ export const LENDING_POOL_ABI = [
       { name: 'liquidityIndex', type: 'uint256' },
       { name: 'variableBorrowIndex', type: 'uint256' },
       { name: 'currentLiquidityRate', type: 'uint256' },
-      { name: 'currentVariableBorrowRate', type: 'uint256' },
+      { name: 'currentBorrowRate', type: 'uint256' },
       { name: 'lastUpdateTimestamp', type: 'uint40' },
       { name: 'cTokenAddress', type: 'address' },
-      { name: 'totalDeposits', type: 'uint256' },
       { name: 'totalBorrows', type: 'uint256' },
+      { name: 'totalDeposits', type: 'uint256' },
     ],
   },
-  // 获取用户储备数据
+  // 获取用户存款
   {
-    name: 'getUserReserveData',
+    name: 'getUserDeposit',
     type: 'function',
     stateMutability: 'view',
     inputs: [
-      { name: 'asset', type: 'address' },
       { name: 'user', type: 'address' },
+      { name: 'asset', type: 'address' },
     ],
-    outputs: [
-      { name: 'currentCTokenBalance', type: 'uint256' },
-      { name: 'currentVariableDebt', type: 'uint256' },
-      { name: 'scaledVariableDebt', type: 'uint256' },
-      { name: 'usageAsCollateralEnabled', type: 'bool' },
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  // 获取用户债务
+  {
+    name: 'getUserDebt',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'user', type: 'address' },
+      { name: 'asset', type: 'address' },
     ],
+    outputs: [{ name: '', type: 'uint256' }],
   },
   // 事件
   {
@@ -260,9 +285,25 @@ export const ERC20_ABI = [
 // 获取当前网络的合约地址
 export function getContractAddresses(chainId: number) {
   const addresses = CONTRACT_ADDRESSES[chainId as keyof typeof CONTRACT_ADDRESSES];
-  if (!addresses) {
-    console.warn(`不支持的网络ID: ${chainId}，使用本地开发网络配置`);
-    return CONTRACT_ADDRESSES[31337];
-  }
-  return addresses;
+  return addresses ?? UNCONFIGURED_ADDRESSES;
+}
+
+export function isConfiguredAddress(address: string | undefined): address is Address {
+  return !!address && isAddress(address) && address.toLowerCase() !== zeroAddress;
+}
+
+const ASSET_ADDRESS_KEYS = {
+  USDT: 'USDT',
+  USDC: 'USDC',
+  WETH: 'WETH',
+  ETH: 'WETH',
+  WBTC: 'WBTC',
+} as const;
+
+export function getAssetAddress(chainId: number, symbol: string): Address | undefined {
+  const key = ASSET_ADDRESS_KEYS[symbol.toUpperCase() as keyof typeof ASSET_ADDRESS_KEYS];
+  if (!key) return undefined;
+
+  const address = getContractAddresses(chainId)[key];
+  return isConfiguredAddress(address) ? address : undefined;
 }

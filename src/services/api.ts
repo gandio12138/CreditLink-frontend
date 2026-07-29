@@ -139,10 +139,33 @@ export async function refreshCredit(): Promise<ApiResponse<{ score: number; tier
 export async function requestCreditSign(
   params: SignRequest
 ): Promise<ApiResponse<SignResponse>> {
-  return request<SignResponse>('/credit/sign', {
+  const result = await request<unknown>('/credit/sign', {
     method: 'POST',
     body: JSON.stringify(params),
   });
+
+  if (result.error) return { error: result.error };
+  if (!isSignResponse(result.data, params.market)) {
+    return { error: '签名服务返回了无效数据' };
+  }
+  return { data: result.data };
+}
+
+function isSignResponse(value: unknown, requestedMarket: string): value is SignResponse {
+  if (typeof value !== 'object' || value === null) return false;
+  const response = value as Record<string, unknown>;
+  const unsignedInteger = /^(0|[1-9]\d*)$/;
+  const positiveInteger = /^[1-9]\d*$/;
+
+  return typeof response.signature === 'string' && /^0x[0-9a-fA-F]{130}$/.test(response.signature) &&
+    typeof response.market === 'string' && response.market.trim() !== '' &&
+    response.market.trim().toUpperCase() === requestedMarket.trim().toUpperCase() &&
+    typeof response.ltv === 'number' && Number.isSafeInteger(response.ltv) && response.ltv >= 0 &&
+    typeof response.amountCap === 'string' && positiveInteger.test(response.amountCap) &&
+    typeof response.nonce === 'string' && unsignedInteger.test(response.nonce) &&
+    typeof response.deadline === 'number' && Number.isSafeInteger(response.deadline) && response.deadline > 0 &&
+    typeof response.creditScore === 'number' && Number.isFinite(response.creditScore) &&
+    typeof response.creditTier === 'string' && response.creditTier.length > 0;
 }
 
 // ==================== 风险参数API ====================

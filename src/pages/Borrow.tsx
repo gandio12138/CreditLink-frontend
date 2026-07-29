@@ -1,31 +1,31 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useChainId } from 'wagmi';
 import { Link } from 'react-router-dom';
+import { keccak256, parseUnits, toBytes } from 'viem';
 import { useUserAccountData } from '../hooks/useLendingPool';
-import { useCreditInfo } from '../hooks/useApiQueries';
+import { useCreditInfo, useMarketStats } from '../hooks/useApiQueries';
 import { useBorrowWithCredit } from '../hooks/useLendingPool';
 import { api } from '../services/api';
+import { getAssetAddress } from '../config/contracts';
 import { SUPPORTED_ASSETS } from '../types';
 import type { SignResponse } from '../types';
 
 // 借款步骤
 type BorrowStep = 'select' | 'credit' | 'simulate' | 'confirm';
 
-const STEP_LABELS = ['选择资产', '信用检查', '风险模拟', '确认借款'];
+const STEP_LABELS = ['选择资产', '信用检查', '链上校验', '确认借款'];
 const STEP_KEYS: BorrowStep[] = ['select', 'credit', 'simulate', 'confirm'];
-
-// 模拟的资产地址映射（实际项目中应从配置获取）
-const ASSET_ADDRESS_MAP: Record<string, `0x${string}`> = {
-  USDT: '0x0000000000000000000000000000000000000001' as `0x${string}`,
-  USDC: '0x0000000000000000000000000000000000000002' as `0x${string}`,
-  ETH: '0x0000000000000000000000000000000000000003' as `0x${string}`,
-  WBTC: '0x0000000000000000000000000000000000000004' as `0x${string}`,
-};
 
 export default function Borrow() {
   const { isConnected, address } = useAccount();
-  const { data: accountData, isLoading } = useUserAccountData();
-  const { data: creditInfo } = useCreditInfo();
+  const chainId = useChainId();
+  const { data: accountData, isLoading, isError: isAccountError } = useUserAccountData();
+  const { data: creditInfo, isError: isCreditError } = useCreditInfo();
+  const {
+    data: marketResponse,
+    isLoading: isMarketLoading,
+    isError: isMarketError,
+  } = useMarketStats();
   const { borrowWithCredit, isPending, isConfirming, isSuccess, error, reset } = useBorrowWithCredit();
 
   // 向导状态
@@ -39,53 +39,55 @@ export default function Borrow() {
   // 计算可借款额度
   const availableBorrow = parseFloat(accountData?.availableBorrowUSD || '0');
   const currentHealthFactor = parseFloat(accountData?.healthFactor || '0');
-  const totalCollateral = parseFloat(accountData?.totalCollateralUSD || '0');
   const totalDebt = parseFloat(accountData?.totalDebtUSD || '0');
 
-  // 资产列表
+  // 只展示后端实际返回且当前链已配置合约地址的市场。
   const borrowableAssets = useMemo(() => {
-    return SUPPORTED_ASSETS.map(asset => ({
-      ...asset,
-      borrowAPR: (3 + Math.random() * 4).toFixed(2),
-      available: Math.floor(100000 + Math.random() * 100000).toLocaleString(),
-    }));
-  }, []);
+    return (marketResponse?.markets ?? []).flatMap((market) => {
+      const asset = SUPPORTED_ASSETS.find((item) => item.symbol === market.symbol);
+      const assetAddress = getAssetAddress(chainId, market.symbol);
+      if (!asset || !assetAddress) return [];
+
+      const availableLiquidityUSD = Math.max(
+        0,
+        parseFloat(market.totalSupply) - parseFloat(market.totalBorrow),
+      );
+      return [{ ...asset, ...market, assetAddress, availableLiquidityUSD }];
+    });
+  }, [chainId, marketResponse]);
 
   // 当前选中的资产
   const selectedAssetData = useMemo(() => {
     return borrowableAssets.find(a => a.symbol === selectedAsset);
   }, [borrowableAssets, selectedAsset]);
 
-  // 模拟借款后的健康因子
-  const simulatedHealthFactor = useMemo(() => {
-    const amount = parseFloat(borrowAmount) || 0;
-    if (amount === 0 || totalCollateral === 0) return currentHealthFactor;
+  const parsedBorrowAmount = useMemo(() => {
+    if (!selectedAssetData || !borrowAmount) return null;
+    try {
+      return parseUnits(borrowAmount, selectedAssetData.decimals);
+    } catch {
+      return null;
+    }
+  }, [borrowAmount, selectedAssetData]);
 
-    // 简化的健康因子计算: HF = (抵押品价值 * 清算阈值) / (债务 + 新借款)
-    const liquidationThreshold = 0.8; // 假设80%清算阈值
-    const newTotalDebt = totalDebt + amount;
-    if (newTotalDebt === 0) return 0; // 表示无限大
-    return (totalCollateral * liquidationThreshold) / newTotalDebt;
-  }, [borrowAmount, totalCollateral, totalDebt, currentHealthFactor]);
+  const marketId = signatureData
+    ? keccak256(toBytes(signatureData.market))
+    : null;
+
+  const requiredDataAvailable = !!accountData && !!creditInfo && !!marketResponse &&
+    !isAccountError && !isCreditError && !isMarketError;
 
   // 信用检查流程
   const handleCreditCheck = useCallback(async () => {
-    if (!selectedAsset || !borrowAmount || !address) return;
+    if (!selectedAssetData || !parsedBorrowAmount || parsedBorrowAmount <= 0n || !address) return;
 
     setCreditCheckStatus('checking');
-    setCreditCheckMessage('正在连接信用评估服务...');
-
-    // 模拟请求延迟
-    await new Promise(resolve => setTimeout(resolve, 800));
-    setCreditCheckMessage('正在验证链上身份...');
-    await new Promise(resolve => setTimeout(resolve, 600));
-    setCreditCheckMessage('正在计算信用评分...');
-    await new Promise(resolve => setTimeout(resolve, 700));
+    setCreditCheckMessage('正在请求信用授权签名...');
 
     try {
       const result = await api.requestCreditSign({
-        market: selectedAsset,
-        amount: borrowAmount,
+        market: selectedAssetData.symbol,
+        amount: parsedBorrowAmount.toString(),
       });
 
       if (result.error || !result.data) {
@@ -99,36 +101,28 @@ export default function Borrow() {
       setCreditCheckStatus('success');
 
       // 自动进入下一步
-      setTimeout(() => setStep('simulate'), 500);
+      setStep('simulate');
     } catch {
       setCreditCheckStatus('error');
       setCreditCheckMessage('信用检查服务暂时不可用');
     }
-  }, [selectedAsset, borrowAmount, address]);
+  }, [selectedAssetData, parsedBorrowAmount, address]);
 
   // 确认借款
   const handleConfirmBorrow = useCallback(async () => {
-    if (!selectedAsset || !borrowAmount || !signatureData || !address) return;
-
-    const assetAddress = ASSET_ADDRESS_MAP[selectedAsset];
-    if (!assetAddress) return;
-
-    const asset = SUPPORTED_ASSETS.find(a => a.symbol === selectedAsset);
-    if (!asset) return;
-
-    // 转换金额为 BigInt（根据代币精度）
-    const amount = BigInt(Math.floor(parseFloat(borrowAmount) * 10 ** asset.decimals));
+    if (!requiredDataAvailable || !selectedAssetData || !parsedBorrowAmount || !marketId || !signatureData || !address) return;
 
     await borrowWithCredit(
-      assetAddress,
-      amount,
+      selectedAssetData.assetAddress,
+      parsedBorrowAmount,
+      marketId,
       BigInt(signatureData.ltv),
       BigInt(signatureData.amountCap),
       BigInt(signatureData.nonce),
       BigInt(signatureData.deadline),
       signatureData.signature as `0x${string}`
     );
-  }, [selectedAsset, borrowAmount, signatureData, address, borrowWithCredit]);
+  }, [requiredDataAvailable, selectedAssetData, parsedBorrowAmount, marketId, signatureData, address, borrowWithCredit]);
 
   // 交易成功后重置
   useEffect(() => {
@@ -169,17 +163,36 @@ export default function Borrow() {
   const canProceed = useMemo(() => {
     switch (step) {
       case 'select':
-        return selectedAsset && parseFloat(borrowAmount) > 0 && parseFloat(borrowAmount) <= availableBorrow;
+        return !!selectedAssetData && !!parsedBorrowAmount && parsedBorrowAmount > 0n &&
+          !!accountData && !!creditInfo && creditInfo.tier !== 'D' && availableBorrow > 0 &&
+          !isAccountError && !isCreditError && !isMarketError;
       case 'credit':
         return creditCheckStatus === 'success';
       case 'simulate':
-        return simulatedHealthFactor > 1.05 || simulatedHealthFactor === 0;
+        return requiredDataAvailable && !!signatureData && !!selectedAssetData && !!marketId && !!parsedBorrowAmount;
       case 'confirm':
-        return !isPending && !isConfirming;
+        return requiredDataAvailable && !!signatureData && !!selectedAssetData && !!marketId && !!parsedBorrowAmount &&
+          !isPending && !isConfirming;
       default:
         return false;
     }
-  }, [step, selectedAsset, borrowAmount, availableBorrow, creditCheckStatus, simulatedHealthFactor, isPending, isConfirming]);
+  }, [
+    step,
+    selectedAssetData,
+    parsedBorrowAmount,
+    accountData,
+    creditInfo,
+    availableBorrow,
+    isAccountError,
+    isCreditError,
+    isMarketError,
+    creditCheckStatus,
+    signatureData,
+    marketId,
+    isPending,
+    isConfirming,
+    requiredDataAvailable,
+  ]);
 
   if (!isConnected) {
     return (
@@ -219,6 +232,8 @@ export default function Borrow() {
           <div className="text-xs text-slate-500 mb-1">可借款额度</div>
           {isLoading ? (
             <div className="h-6 w-20 skeleton rounded" />
+          ) : isAccountError || !accountData ? (
+            <div className="text-lg font-semibold text-slate-500">--</div>
           ) : (
             <div className="text-lg font-semibold text-slate-100 tabular-nums">
               ${availableBorrow.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -229,6 +244,8 @@ export default function Borrow() {
           <div className="text-xs text-slate-500 mb-1">当前借款</div>
           {isLoading ? (
             <div className="h-6 w-20 skeleton rounded" />
+          ) : isAccountError || !accountData ? (
+            <div className="text-lg font-semibold text-slate-500">--</div>
           ) : (
             <div className="text-lg font-semibold text-danger-400 tabular-nums">
               ${totalDebt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -239,18 +256,30 @@ export default function Borrow() {
           <div className="text-xs text-slate-500 mb-1">健康因子</div>
           {isLoading ? (
             <div className="h-6 w-16 skeleton rounded" />
+          ) : isAccountError || !accountData ? (
+            <div className="text-lg font-semibold text-slate-500">--</div>
           ) : (
             <HealthFactorDisplay value={currentHealthFactor} />
           )}
         </div>
         <div className="card p-4">
           <div className="text-xs text-slate-500 mb-1">信用等级</div>
-          <div className="flex items-center gap-2">
-            <CreditTierBadge tier={creditInfo?.tier || 'C'} />
-            <span className="text-sm text-slate-400">{creditInfo?.score || 500}分</span>
-          </div>
+          {isCreditError || !creditInfo ? (
+            <div className="text-lg font-semibold text-slate-500">--</div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <CreditTierBadge tier={creditInfo.tier} />
+              <span className="text-sm text-slate-400">{creditInfo.score}分</span>
+            </div>
+          )}
         </div>
       </div>
+
+      {(isAccountError || isCreditError || isMarketError) && (
+        <div className="p-4 rounded-xl bg-danger-500/10 border border-danger-500/30 text-danger-300 text-sm">
+          链上账户、信用或市场数据不可用，已停用借款操作。请检查预言机和当前网络配置。
+        </div>
+      )}
 
       {/* 步骤指示器 */}
       <div className="card p-4">
@@ -300,7 +329,11 @@ export default function Borrow() {
             </div>
 
             <div className="divide-y divide-slate-700/50">
-              {borrowableAssets.map(asset => (
+              {isMarketLoading ? (
+                <div className="p-8 text-center text-slate-500">正在加载市场数据...</div>
+              ) : borrowableAssets.length === 0 ? (
+                <div className="p-8 text-center text-slate-500">当前网络暂无已配置的可借市场</div>
+              ) : borrowableAssets.map(asset => (
                 <div
                   key={asset.symbol}
                   className={`flex items-center justify-between p-4 cursor-pointer transition-colors ${
@@ -327,8 +360,10 @@ export default function Borrow() {
                       <div className="font-medium text-danger-400 tabular-nums">{asset.borrowAPR}%</div>
                     </div>
                     <div className="text-right hidden sm:block">
-                      <div className="text-xs text-slate-500">可借数量</div>
-                      <div className="font-medium text-slate-100 tabular-nums">{asset.available}</div>
+                      <div className="text-xs text-slate-500">可用流动性 (USD)</div>
+                      <div className="font-medium text-slate-100 tabular-nums">
+                        ${asset.availableLiquidityUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </div>
                     </div>
                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                       selectedAsset === asset.symbol
@@ -349,26 +384,18 @@ export default function Borrow() {
             {/* 借款金额输入 */}
             {selectedAsset && (
               <div className="p-4 border-t border-slate-700/50 bg-slate-800/30">
-                <label className="block text-sm font-medium text-slate-300 mb-2">借款金额 (USD)</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">借款数量 ({selectedAsset})</label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">$</span>
                   <input
                     type="number"
                     value={borrowAmount}
                     onChange={(e) => setBorrowAmount(e.target.value)}
                     placeholder="0.00"
-                    className="w-full pl-8 pr-24 py-3 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-primary-500 tabular-nums"
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-primary-500 tabular-nums"
                   />
-                  <button
-                    onClick={() => setBorrowAmount(availableBorrow.toString())}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-medium text-primary-400 bg-primary-500/10 rounded hover:bg-primary-500/20 transition-colors"
-                  >
-                    最大
-                  </button>
                 </div>
-                <div className="flex justify-between mt-2 text-xs text-slate-500">
-                  <span>最小: $10.00</span>
-                  <span>最大: ${availableBorrow.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                <div className="mt-2 text-xs text-slate-500">
+                  账户可借上限：${availableBorrow.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD；资产数量将由合约按最新预言机价格校验。
                 </div>
               </div>
             )}
@@ -457,35 +484,16 @@ export default function Borrow() {
           </div>
         )}
 
-        {/* Step 3: 风险模拟 */}
+        {/* Step 3: 链上风险校验 */}
         {step === 'simulate' && (
           <div className="p-6">
             <div className="mb-6">
-              <h3 className="font-semibold text-slate-100 mb-1">风险模拟器</h3>
-              <p className="text-sm text-slate-400">调整借款金额，查看对健康因子的影响</p>
+              <h3 className="font-semibold text-slate-100 mb-1">链上风险校验</h3>
+              <p className="text-sm text-slate-400">以下数值来自市场 API 和当前链上账户</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* 左侧：滑块和输入 */}
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-3">借款金额</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max={availableBorrow}
-                    step="10"
-                    value={borrowAmount}
-                    onChange={(e) => setBorrowAmount(e.target.value)}
-                    className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary-500"
-                  />
-                  <div className="flex justify-between mt-2 text-xs text-slate-500">
-                    <span>$0</span>
-                    <span>${availableBorrow.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                  </div>
-                </div>
-
-                <div className="bg-slate-800/50 rounded-xl p-4 space-y-3">
+              <div className="bg-slate-800/50 rounded-xl p-4 space-y-3">
                   <div className="flex justify-between">
                     <span className="text-slate-400">借款资产</span>
                     <span className="font-medium text-slate-100">{selectedAsset}</span>
@@ -493,56 +501,37 @@ export default function Borrow() {
                   <div className="flex justify-between">
                     <span className="text-slate-400">借款金额</span>
                     <span className="font-semibold text-slate-100 tabular-nums">
-                      ${parseFloat(borrowAmount || '0').toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      {borrowAmount} {selectedAsset}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">借款 APR</span>
                     <span className="font-medium text-danger-400">{selectedAssetData?.borrowAPR}%</span>
                   </div>
-                  <div className="border-t border-slate-700 pt-3 flex justify-between">
-                    <span className="text-slate-400">预计日利息</span>
-                    <span className="font-medium text-slate-100 tabular-nums">
-                      ${((parseFloat(borrowAmount || '0') * parseFloat(selectedAssetData?.borrowAPR || '0') / 100) / 365).toFixed(4)}
-                    </span>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">基础 LTV</span>
+                    <span className="font-medium text-slate-100">{selectedAssetData ? selectedAssetData.ltv / 100 : '--'}%</span>
                   </div>
-                </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">清算 LTV</span>
+                    <span className="font-medium text-danger-400">{selectedAssetData ? selectedAssetData.liquidationLtv / 100 : '--'}%</span>
+                  </div>
               </div>
 
-              {/* 右侧：健康因子可视化 */}
               <div className="bg-slate-800/30 rounded-xl p-6">
-                <div className="text-center mb-6">
-                  <div className="text-sm text-slate-400 mb-2">借款后健康因子</div>
-                  <HealthFactorGauge value={simulatedHealthFactor} />
-                </div>
-
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-slate-400">当前健康因子</span>
                     <HealthFactorDisplay value={currentHealthFactor} size="small" />
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-400">借款后健康因子</span>
-                    <HealthFactorDisplay value={simulatedHealthFactor} size="small" />
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-400">清算阈值</span>
-                    <span className="text-sm font-medium text-danger-400">1.00</span>
+                    <span className="text-sm text-slate-400">账户可借额度</span>
+                    <span className="text-sm font-medium text-slate-100">${availableBorrow.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD</span>
                   </div>
                 </div>
-
-                {simulatedHealthFactor > 0 && simulatedHealthFactor < 1.15 && (
-                  <div className="mt-4 p-3 rounded-lg bg-danger-500/10 border border-danger-500/30">
-                    <div className="flex items-start gap-2">
-                      <svg className="w-5 h-5 text-danger-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      <div className="text-sm text-danger-300">
-                        健康因子过低！您的仓位可能面临清算风险，建议减少借款金额。
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <div className="mt-4 p-3 rounded-lg bg-info-500/10 border border-info-500/30 text-sm text-info-300">
+                  借款后的精确健康因子需要最新资产价格。前端不伪造估算值，最终由 LendingPool 使用预言机数据校验，不安全的交易会 revert。
+                </div>
               </div>
             </div>
           </div>
@@ -565,7 +554,7 @@ export default function Borrow() {
                 <div className="flex justify-between">
                   <span className="text-slate-400">借款金额</span>
                   <span className="font-semibold text-slate-100 text-lg tabular-nums">
-                    ${parseFloat(borrowAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {borrowAmount} {selectedAsset}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -574,11 +563,11 @@ export default function Borrow() {
                 </div>
                 <div className="border-t border-slate-700 pt-4 flex justify-between">
                   <span className="text-slate-400">信用增强 LTV</span>
-                  <span className="font-medium text-success-400">{signatureData?.ltv ? signatureData.ltv / 100 : 70}%</span>
+                  <span className="font-medium text-success-400">{signatureData ? signatureData.ltv / 100 : '--'}%</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">借款后健康因子</span>
-                  <HealthFactorDisplay value={simulatedHealthFactor} size="small" />
+                  <span className="text-sm font-medium text-slate-400">由链上预言机校验</span>
                 </div>
               </div>
 
@@ -623,7 +612,7 @@ export default function Borrow() {
 
               <button
                 onClick={handleConfirmBorrow}
-                disabled={isPending || isConfirming || isSuccess}
+                disabled={!canProceed || isSuccess}
                 className="w-full btn-primary py-3 text-base disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isPending ? '等待签名...' : isConfirming ? '确认中...' : isSuccess ? '借款成功' : '确认借款'}
@@ -694,63 +683,6 @@ function HealthFactorDisplay({ value, size = 'large' }: { value: number; size?: 
     <span className={`tabular-nums ${colorClass} ${sizeClass}`}>
       {displayValue}
     </span>
-  );
-}
-
-// 健康因子仪表盘
-function HealthFactorGauge({ value }: { value: number }) {
-  const displayValue = value === 0 ? '∞' : value.toFixed(2);
-  const percentage = value === 0 ? 100 : Math.min(100, (value / 3) * 100);
-
-  let colorClass = 'text-success-400';
-
-  if (value > 0) {
-    if (value < 1.15) {
-      colorClass = 'text-danger-400';
-    } else if (value < 1.5) {
-      colorClass = 'text-warning-400';
-    } else if (value < 2) {
-      colorClass = 'text-info-400';
-    }
-  }
-
-  return (
-    <div className="relative w-40 h-40 mx-auto">
-      {/* 背景圆环 */}
-      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-        <circle
-          cx="50"
-          cy="50"
-          r="40"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="8"
-          className="text-slate-700"
-        />
-        <circle
-          cx="50"
-          cy="50"
-          r="40"
-          fill="none"
-          stroke="url(#gaugeGradient)"
-          strokeWidth="8"
-          strokeLinecap="round"
-          strokeDasharray={`${percentage * 2.51} 251`}
-          className="transition-all duration-500"
-        />
-        <defs>
-          <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" className={`stop-color: var(--tw-gradient-from)`} stopColor="currentColor" />
-            <stop offset="100%" className={`stop-color: var(--tw-gradient-to)`} stopColor="currentColor" />
-          </linearGradient>
-        </defs>
-      </svg>
-      {/* 中心数值 */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={`text-3xl font-bold tabular-nums ${colorClass}`}>{displayValue}</span>
-        <span className="text-xs text-slate-500">健康因子</span>
-      </div>
-    </div>
   );
 }
 

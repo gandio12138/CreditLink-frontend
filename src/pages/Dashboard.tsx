@@ -47,8 +47,16 @@ const TIER_STYLES: Record<string, { color: string; bgColor: string }> = {
 
 // 账户概览卡片
 const AccountOverview = memo(function AccountOverview() {
-  const { data: accountData, isLoading } = useUserAccountData();
-  const { data: creditInfo, isLoading: isLoadingCredit } = useCreditInfo();
+  const { data: accountData, isLoading, isError: isAccountError } = useUserAccountData();
+  const { data: creditInfo, isLoading: isLoadingCredit, isError: isCreditError } = useCreditInfo();
+
+  if (isAccountError || isCreditError) {
+    return (
+      <div className="card p-5 text-danger-300 border border-danger-500/30 col-span-full">
+        链上账户或信用数据不可用，未使用零值或模拟金额代替。
+      </div>
+    );
+  }
 
   const tierStyle = TIER_STYLES[creditInfo?.tier || 'C'] || TIER_STYLES.C;
   const healthFactor = parseFloat(accountData?.healthFactor || '0');
@@ -190,12 +198,12 @@ const QuickActions = memo(function QuickActions() {
 });
 
 // 平台统计
-const PlatformStatsDisplay = memo(function PlatformStatsDisplay({ stats, isLoading }: { stats: PlatformStats | null; isLoading: boolean }) {
+const PlatformStatsDisplay = memo(function PlatformStatsDisplay({ stats, isLoading, isError }: { stats: PlatformStats | null; isLoading: boolean; isError: boolean }) {
   const items = useMemo(() => [
-    { label: '总锁仓价值', value: stats ? formatUSD(stats.totalValueLocked) : '$0', icon: '🔒' },
-    { label: '总存款', value: stats ? formatUSD(stats.totalDeposits) : '$0', icon: '💰' },
-    { label: '总借款', value: stats ? formatUSD(stats.totalBorrows) : '$0', icon: '📊' },
-    { label: '活跃用户', value: stats ? stats.activeUsers.toLocaleString() : '0', icon: '👥' },
+    { label: '总锁仓价值', value: stats ? formatUSD(stats.totalValueLocked) : '--', icon: '🔒' },
+    { label: '总存款', value: stats ? formatUSD(stats.totalDeposits) : '--', icon: '💰' },
+    { label: '总借款', value: stats ? formatUSD(stats.totalBorrows) : '--', icon: '📊' },
+    { label: '活跃用户', value: stats ? stats.activeUsers.toLocaleString() : '--', icon: '👥' },
   ], [stats]);
 
   return (
@@ -208,6 +216,8 @@ const PlatformStatsDisplay = memo(function PlatformStatsDisplay({ stats, isLoadi
           </div>
           {isLoading ? (
             <div className="h-7 w-20 skeleton rounded" />
+          ) : isError ? (
+            <div className="text-xl font-semibold text-slate-500">--</div>
           ) : (
             <div className="text-xl font-semibold text-slate-100 tabular-nums">
               {item.value}
@@ -220,7 +230,7 @@ const PlatformStatsDisplay = memo(function PlatformStatsDisplay({ stats, isLoadi
 });
 
 // 市场列表
-const MarketList = memo(function MarketList({ markets, isLoading }: { markets: MarketStatsItem[]; isLoading: boolean }) {
+const MarketList = memo(function MarketList({ markets, isLoading, isError }: { markets: MarketStatsItem[]; isLoading: boolean; isError: boolean }) {
   const { openDepositModal, openBorrowModal } = useModalStore();
 
   return (
@@ -248,6 +258,8 @@ const MarketList = memo(function MarketList({ markets, isLoading }: { markets: M
               <div className="h-8 w-20 skeleton rounded-lg" />
             </div>
           ))
+        ) : isError ? (
+          <div className="p-8 text-center text-danger-300">市场数据不可用</div>
         ) : markets.length > 0 ? (
           markets.slice(0, 4).map((market) => (
             <div key={market.symbol} className="flex items-center justify-between p-4 hover:bg-slate-800/30 transition-colors">
@@ -344,8 +356,8 @@ export default function Dashboard() {
   const [showWalletModal, setShowWalletModal] = useState(false);
 
   // 使用 React Query hooks 加载公开数据
-  const { data: platformStats, isLoading: isLoadingStats } = usePlatformStats();
-  const { data: marketStatsData, isLoading: isLoadingMarkets } = useMarketStats();
+  const { data: platformStats, isLoading: isLoadingStats, isError: isStatsError } = usePlatformStats();
+  const { data: marketStatsData, isLoading: isLoadingMarkets, isError: isMarketsError } = useMarketStats();
   const marketStats = marketStatsData?.markets || [];
 
   const hasInjectedWallet = typeof window !== 'undefined' && window.ethereum;
@@ -375,7 +387,7 @@ export default function Dashboard() {
       </div>
 
       {/* 平台统计 */}
-      <PlatformStatsDisplay stats={platformStats || null} isLoading={isLoadingStats} />
+      <PlatformStatsDisplay stats={platformStats || null} isLoading={isLoadingStats} isError={isStatsError} />
 
       {isConnected ? (
         <>
@@ -388,7 +400,7 @@ export default function Dashboard() {
               <QuickActions />
             </div>
             <div className="lg:col-span-2">
-              <MarketList markets={marketStats} isLoading={isLoadingMarkets} />
+              <MarketList markets={marketStats} isLoading={isLoadingMarkets} isError={isMarketsError} />
             </div>
           </div>
         </>
@@ -401,7 +413,7 @@ export default function Dashboard() {
           <FeatureCards />
 
           {/* 市场概览 */}
-          <MarketList markets={marketStats} isLoading={isLoadingMarkets} />
+          <MarketList markets={marketStats} isLoading={isLoadingMarkets} isError={isMarketsError} />
         </>
       )}
 

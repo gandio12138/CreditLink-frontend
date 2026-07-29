@@ -7,21 +7,31 @@ import {
   useWaitForTransactionReceipt,
 } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
-import { getContractAddresses, LENDING_POOL_ABI, ERC20_ABI } from '../config/contracts';
+import {
+  getContractAddresses,
+  isConfiguredAddress,
+  LENDING_POOL_ABI,
+  ERC20_ABI,
+} from '../config/contracts';
+
+const UNCONFIGURED_CONTRACT_ERROR = new Error('当前网络尚未配置新版 CreditLink 合约地址');
 
 // 获取用户账户数据
 export function useUserAccountData() {
   const { address } = useAccount();
   const chainId = useChainId();
   const addresses = getContractAddresses(chainId);
+  const lendingPoolAddress = isConfiguredAddress(addresses.LendingPool)
+    ? addresses.LendingPool
+    : undefined;
 
-  const { data, isLoading, refetch } = useReadContract({
-    address: addresses.LendingPool,
+  const { data, isLoading, isError, error, refetch } = useReadContract({
+    address: lendingPoolAddress,
     abi: LENDING_POOL_ABI,
     functionName: 'getUserAccountData',
     args: address ? [address] : undefined,
     query: {
-      enabled: !!address,
+      enabled: !!address && !!lendingPoolAddress,
     },
   });
 
@@ -36,6 +46,9 @@ export function useUserAccountData() {
         }
       : null,
     isLoading,
+    isError: !!address && (!lendingPoolAddress || isError),
+    error: !lendingPoolAddress && address ? UNCONFIGURED_CONTRACT_ERROR : error,
+    isConfigured: !!lendingPoolAddress,
     refetch,
   };
 }
@@ -44,14 +57,18 @@ export function useUserAccountData() {
 export function useReserveData(assetAddress: `0x${string}` | undefined) {
   const chainId = useChainId();
   const addresses = getContractAddresses(chainId);
+  const lendingPoolAddress = isConfiguredAddress(addresses.LendingPool)
+    ? addresses.LendingPool
+    : undefined;
+  const configuredAsset = isConfiguredAddress(assetAddress) ? assetAddress : undefined;
 
-  const { data, isLoading, refetch } = useReadContract({
-    address: addresses.LendingPool,
+  const { data, isLoading, isError, error, refetch } = useReadContract({
+    address: lendingPoolAddress,
     abi: LENDING_POOL_ABI,
     functionName: 'getReserveData',
-    args: assetAddress ? [assetAddress] : undefined,
+    args: configuredAsset ? [configuredAsset] : undefined,
     query: {
-      enabled: !!assetAddress,
+      enabled: !!configuredAsset && !!lendingPoolAddress,
     },
   });
 
@@ -61,14 +78,18 @@ export function useReserveData(assetAddress: `0x${string}` | undefined) {
           liquidityIndex: data[0],
           variableBorrowIndex: data[1],
           currentLiquidityRate: data[2],
-          currentVariableBorrowRate: data[3],
+          currentBorrowRate: data[3],
           lastUpdateTimestamp: data[4],
           cTokenAddress: data[5],
-          totalDeposits: data[6],
-          totalBorrows: data[7],
+          totalBorrows: data[6],
+          totalDeposits: data[7],
         }
       : null,
     isLoading,
+    isError: !!assetAddress && (!configuredAsset || !lendingPoolAddress || isError),
+    error: assetAddress && (!configuredAsset || !lendingPoolAddress)
+      ? UNCONFIGURED_CONTRACT_ERROR
+      : error,
     refetch,
   };
 }
@@ -78,48 +99,69 @@ export function useUserReserveData(assetAddress: `0x${string}` | undefined) {
   const { address } = useAccount();
   const chainId = useChainId();
   const addresses = getContractAddresses(chainId);
+  const lendingPoolAddress = isConfiguredAddress(addresses.LendingPool)
+    ? addresses.LendingPool
+    : undefined;
+  const configuredAsset = isConfiguredAddress(assetAddress) ? assetAddress : undefined;
 
-  const { data, isLoading, refetch } = useReadContract({
-    address: addresses.LendingPool,
+  const depositQuery = useReadContract({
+    address: lendingPoolAddress,
     abi: LENDING_POOL_ABI,
-    functionName: 'getUserReserveData',
-    args: assetAddress && address ? [assetAddress, address] : undefined,
+    functionName: 'getUserDeposit',
+    args: configuredAsset && address ? [address, configuredAsset] : undefined,
     query: {
-      enabled: !!assetAddress && !!address,
+      enabled: !!configuredAsset && !!address && !!lendingPoolAddress,
     },
   });
 
+  const debtQuery = useReadContract({
+    address: lendingPoolAddress,
+    abi: LENDING_POOL_ABI,
+    functionName: 'getUserDebt',
+    args: configuredAsset && address ? [address, configuredAsset] : undefined,
+    query: {
+      enabled: !!configuredAsset && !!address && !!lendingPoolAddress,
+    },
+  });
+
+  const isUnconfigured = !!assetAddress && (!configuredAsset || !lendingPoolAddress);
+
   return {
-    data: data
+    data: depositQuery.data !== undefined && debtQuery.data !== undefined
       ? {
-          currentCTokenBalance: data[0],
-          currentVariableDebt: data[1],
-          scaledVariableDebt: data[2],
-          usageAsCollateralEnabled: data[3],
+          currentCTokenBalance: depositQuery.data,
+          currentVariableDebt: debtQuery.data,
         }
       : null,
-    isLoading,
-    refetch,
+    isLoading: depositQuery.isLoading || debtQuery.isLoading,
+    isError: isUnconfigured || depositQuery.isError || debtQuery.isError,
+    error: isUnconfigured
+      ? UNCONFIGURED_CONTRACT_ERROR
+      : depositQuery.error || debtQuery.error,
+    refetch: async () => Promise.all([depositQuery.refetch(), debtQuery.refetch()]),
   };
 }
 
 // 获取ERC20余额
 export function useTokenBalance(tokenAddress: `0x${string}` | undefined) {
   const { address } = useAccount();
+  const configuredToken = isConfiguredAddress(tokenAddress) ? tokenAddress : undefined;
 
-  const { data, isLoading, refetch } = useReadContract({
-    address: tokenAddress,
+  const { data, isLoading, isError, error, refetch } = useReadContract({
+    address: configuredToken,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
     query: {
-      enabled: !!tokenAddress && !!address,
+      enabled: !!configuredToken && !!address,
     },
   });
 
   return {
     balance: data,
     isLoading,
+    isError: !!tokenAddress && (!configuredToken || isError),
+    error: tokenAddress && !configuredToken ? UNCONFIGURED_CONTRACT_ERROR : error,
     refetch,
   };
 }
@@ -130,20 +172,26 @@ export function useTokenAllowance(
   spenderAddress: `0x${string}` | undefined
 ) {
   const { address } = useAccount();
+  const configuredToken = isConfiguredAddress(tokenAddress) ? tokenAddress : undefined;
+  const configuredSpender = isConfiguredAddress(spenderAddress) ? spenderAddress : undefined;
 
-  const { data, isLoading, refetch } = useReadContract({
-    address: tokenAddress,
+  const { data, isLoading, isError, error, refetch } = useReadContract({
+    address: configuredToken,
     abi: ERC20_ABI,
     functionName: 'allowance',
-    args: address && spenderAddress ? [address, spenderAddress] : undefined,
+    args: address && configuredSpender ? [address, configuredSpender] : undefined,
     query: {
-      enabled: !!tokenAddress && !!address && !!spenderAddress,
+      enabled: !!configuredToken && !!address && !!configuredSpender,
     },
   });
 
   return {
     allowance: data,
     isLoading,
+    isError: !!tokenAddress && (!configuredToken || !configuredSpender || isError),
+    error: tokenAddress && (!configuredToken || !configuredSpender)
+      ? UNCONFIGURED_CONTRACT_ERROR
+      : error,
     refetch,
   };
 }
@@ -158,6 +206,9 @@ export function useApproveToken() {
 
   const approve = useCallback(
     async (tokenAddress: `0x${string}`, spenderAddress: `0x${string}`, amount: bigint) => {
+      if (!isConfiguredAddress(tokenAddress) || !isConfiguredAddress(spenderAddress)) {
+        throw UNCONFIGURED_CONTRACT_ERROR;
+      }
       writeContract({
         address: tokenAddress,
         abi: ERC20_ABI,
@@ -183,6 +234,9 @@ export function useDeposit() {
   const { address } = useAccount();
   const chainId = useChainId();
   const addresses = getContractAddresses(chainId);
+  const lendingPoolAddress = isConfiguredAddress(addresses.LendingPool)
+    ? addresses.LendingPool
+    : undefined;
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
 
@@ -193,15 +247,18 @@ export function useDeposit() {
   const deposit = useCallback(
     async (assetAddress: `0x${string}`, amount: bigint) => {
       if (!address) throw new Error('请先连接钱包');
+      if (!lendingPoolAddress || !isConfiguredAddress(assetAddress)) {
+        throw UNCONFIGURED_CONTRACT_ERROR;
+      }
 
       writeContract({
-        address: addresses.LendingPool,
+        address: lendingPoolAddress,
         abi: LENDING_POOL_ABI,
         functionName: 'deposit',
-        args: [assetAddress, amount, address],
+        args: [assetAddress, amount],
       });
     },
-    [address, addresses.LendingPool, writeContract]
+    [address, lendingPoolAddress, writeContract]
   );
 
   return {
@@ -219,6 +276,9 @@ export function useWithdraw() {
   const { address } = useAccount();
   const chainId = useChainId();
   const addresses = getContractAddresses(chainId);
+  const lendingPoolAddress = isConfiguredAddress(addresses.LendingPool)
+    ? addresses.LendingPool
+    : undefined;
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
 
@@ -229,15 +289,18 @@ export function useWithdraw() {
   const withdraw = useCallback(
     async (assetAddress: `0x${string}`, amount: bigint) => {
       if (!address) throw new Error('请先连接钱包');
+      if (!lendingPoolAddress || !isConfiguredAddress(assetAddress)) {
+        throw UNCONFIGURED_CONTRACT_ERROR;
+      }
 
       writeContract({
-        address: addresses.LendingPool,
+        address: lendingPoolAddress,
         abi: LENDING_POOL_ABI,
         functionName: 'withdraw',
-        args: [assetAddress, amount, address],
+        args: [assetAddress, amount],
       });
     },
-    [address, addresses.LendingPool, writeContract]
+    [address, lendingPoolAddress, writeContract]
   );
 
   return {
@@ -250,48 +313,14 @@ export function useWithdraw() {
   };
 }
 
-// 普通借款操作
-export function useBorrow() {
-  const { address } = useAccount();
-  const chainId = useChainId();
-  const addresses = getContractAddresses(chainId);
-
-  const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
-
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-  });
-
-  const borrow = useCallback(
-    async (assetAddress: `0x${string}`, amount: bigint) => {
-      if (!address) throw new Error('请先连接钱包');
-
-      writeContract({
-        address: addresses.LendingPool,
-        abi: LENDING_POOL_ABI,
-        functionName: 'borrow',
-        args: [assetAddress, amount, address],
-      });
-    },
-    [address, addresses.LendingPool, writeContract]
-  );
-
-  return {
-    borrow,
-    hash,
-    isPending,
-    isConfirming,
-    isSuccess,
-    error,
-    reset,
-  };
-}
-
 // 信用借款操作（带签名）
 export function useBorrowWithCredit() {
   const { address } = useAccount();
   const chainId = useChainId();
   const addresses = getContractAddresses(chainId);
+  const lendingPoolAddress = isConfiguredAddress(addresses.LendingPool)
+    ? addresses.LendingPool
+    : undefined;
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
 
@@ -303,6 +332,7 @@ export function useBorrowWithCredit() {
     async (
       assetAddress: `0x${string}`,
       amount: bigint,
+      market: `0x${string}`,
       ltv: bigint,
       amountCap: bigint,
       nonce: bigint,
@@ -310,15 +340,18 @@ export function useBorrowWithCredit() {
       signature: `0x${string}`
     ) => {
       if (!address) throw new Error('请先连接钱包');
+      if (!lendingPoolAddress || !isConfiguredAddress(assetAddress)) {
+        throw UNCONFIGURED_CONTRACT_ERROR;
+      }
 
       writeContract({
-        address: addresses.LendingPool,
+        address: lendingPoolAddress,
         abi: LENDING_POOL_ABI,
-        functionName: 'borrowWithCredit',
-        args: [assetAddress, amount, address, ltv, amountCap, nonce, deadline, signature],
+        functionName: 'borrow',
+        args: [assetAddress, amount, address, market, ltv, amountCap, nonce, deadline, signature],
       });
     },
-    [address, addresses.LendingPool, writeContract]
+    [address, lendingPoolAddress, writeContract]
   );
 
   return {
@@ -337,6 +370,9 @@ export function useRepay() {
   const { address } = useAccount();
   const chainId = useChainId();
   const addresses = getContractAddresses(chainId);
+  const lendingPoolAddress = isConfiguredAddress(addresses.LendingPool)
+    ? addresses.LendingPool
+    : undefined;
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
 
@@ -347,15 +383,18 @@ export function useRepay() {
   const repay = useCallback(
     async (assetAddress: `0x${string}`, amount: bigint) => {
       if (!address) throw new Error('请先连接钱包');
+      if (!lendingPoolAddress || !isConfiguredAddress(assetAddress)) {
+        throw UNCONFIGURED_CONTRACT_ERROR;
+      }
 
       writeContract({
-        address: addresses.LendingPool,
+        address: lendingPoolAddress,
         abi: LENDING_POOL_ABI,
         functionName: 'repay',
-        args: [assetAddress, amount, address],
+        args: [assetAddress, amount],
       });
     },
-    [address, addresses.LendingPool, writeContract]
+    [address, lendingPoolAddress, writeContract]
   );
 
   return {
